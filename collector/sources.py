@@ -19,6 +19,7 @@ BASE = f"https://services2.arcgis.com/{ORG}/arcgis/rest/services"
 
 
 WORK_ORDER = "work_order"
+CLOSED = "closed_work_order"
 REPORT = "report"
 
 
@@ -54,6 +55,24 @@ SOURCES: tuple[Source, ...] = (
         service="CWOPWOPRD",
         layer_name="CleanWaterOpenWorkOrder",
     ),
+    # Work orders Thames Water has finished with. Same schema and same
+    # WorkOrderID as the open layers, but carrying the one thing the open feed
+    # never tells us: whether the job was Completed or Canceled. Also a rolling
+    # window, so anything not collected is lost.
+    Source(
+        key="clean_closed",
+        label="Clean water, closed",
+        service="CWCLWOPRD",
+        layer_name="CleanWaterClosedWorkOrder",
+        kind=CLOSED,
+    ),
+    Source(
+        key="waste_closed",
+        label="Waste water, closed",
+        service="WWCLWOPRD",
+        layer_name="WasteWaterClosedWorkOrder",
+        kind=CLOSED,
+    ),
     # Problems the public has reported that have not yet become work orders.
     # The map labels these simply "Leak". Thames Water keeps only a rolling
     # seven days of them, so anything not collected daily is lost for good.
@@ -69,4 +88,5 @@ SOURCES: tuple[Source, ...] = (
 SOURCES_BY_KEY = {s.key: s for s in SOURCES}
 
 WORK_ORDER_SOURCES = tuple(s for s in SOURCES if s.kind == WORK_ORDER)
+CLOSED_SOURCES = tuple(s for s in SOURCES if s.kind == CLOSED)
 REPORT_SOURCES = tuple(s for s in SOURCES if s.kind == REPORT)

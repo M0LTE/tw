@@ -727,6 +727,38 @@ function renderPlaces() {
     `pipe material or ground conditions, all of which plausibly drive real differences in fault rates.`;
 }
 
+// Deliberately states its own n and how much is unaccounted for: with a day of
+// overlap this is a small sample, and reporting the percentage alone would
+// imply more certainty than there is.
+function renderClosure() {
+  const c = state.summary.closure;
+  if (!c || !c.listed_total) {
+    $('#card-closure').hidden = true;
+    return;
+  }
+  const completed = c.matched_by_status.Completed || 0;
+  const cancelled = c.matched_by_status.Canceled || 0;
+  const pct = c.matched ? ((cancelled / c.matched) * 100).toFixed(1) : null;
+
+  $('#closure-body').innerHTML = `
+    <div class="stat-row">
+      <div><span class="stat-value">${formatNumber(c.departed)}</span><span class="stat-label">left the map since tracking began</span></div>
+      <div><span class="stat-value">${formatNumber(completed)}</span><span class="stat-label">confirmed completed</span></div>
+      <div><span class="stat-value ${cancelled ? 'bad' : ''}">${formatNumber(cancelled)}</span><span class="stat-label">cancelled, not repaired</span></div>
+      <div><span class="stat-value">${formatNumber(c.unexplained)}</span><span class="stat-label">no outcome published</span></div>
+    </div>
+    <p class="footnote" style="margin-top:0">
+      ${c.matched
+        ? `Of the ${formatNumber(c.matched)} we can account for, <strong>${pct}%</strong> were cancelled rather than repaired. `
+        : ''}The remaining ${formatNumber(c.unexplained)} never appeared in the closed feed, so we
+      cannot say what happened to them — that feed is also a rolling window, and a fault can pass
+      through it between collections. Thames Water lists
+      <strong>${formatNumber(c.listed_total)}</strong> closed work orders right now, of which only
+      ${formatNumber(c.with_closure_date)} carry a closure date. Small sample so far: tracking
+      began on ${escape(new Date(state.summary.totals.first_snapshot).toLocaleDateString('en-GB'))}.
+    </p>`;
+}
+
 // The GSS panel. Careful wording matters here: these are work orders about
 // external sewer flooding investigations, not adjudicated compensation cases.
 function renderFlooding() {
@@ -870,6 +902,7 @@ async function main() {
     renderOverview();
     renderOldest();
     renderFlooding();
+    renderClosure();
     renderPlaces();
     renderReportsBlurb();
     applyFilters();

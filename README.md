@@ -60,6 +60,8 @@ organisation id `g6o32ZDQ33GpCIu3`. Two layers carry the faults:
 |---|---|---|---|
 | `CleanWaterOpenWorkOrder` | `CWOPWOPRD/FeatureServer` | ~9,500 | Work orders |
 | `WasteWaterOpenWorkOrder` | `WWOPWOPRD/FeatureServer` | ~10,700 | Work orders |
+| `CleanWaterClosedWorkOrder` | `CWCLWOPRD/FeatureServer` | ~500 | Closed work orders |
+| `WasteWaterClosedWorkOrder` | `WWCLWOPRD/FeatureServer` | ~1,500 | Closed work orders |
 | `Point layer` | `Public_Website_Pending_Pins/FeatureServer` | ~2,100 | Public reports |
 
 All read unauthenticated, with `outSR=4326` for WGS84 coordinates. Layer *ids* inside each
@@ -102,6 +104,11 @@ value), `resolved`, `reappeared`. This is what drives the per-fault timeline.
 `reports` — one row per public report ever seen, with `reported_at` (Thames Water's own
 timestamp), `first_seen_at`, `last_seen_at` and `disappeared_at`. Because the source keeps
 only ~7 days, `disappeared_at` is the record that a report existed at all.
+
+`closed_faults` — work orders Thames Water publishes as finished, carrying a
+`WorkOrderStatus` of `Completed` or `Canceled`. Kept apart from `faults` so that table stays
+exactly what the open feed said; they join on `id` at build time. This is the only way to
+tell a repair from a cancellation.
 
 `snapshots` — one row per collection run, with per-source counts.
 
@@ -157,9 +164,10 @@ if the poll looks truncated (see below), so a bad day at the source cannot corru
 
 These matter if you are going to quote the numbers at anyone.
 
-- **"Cleared" means "stopped appearing"**, not "confirmed fixed". The feed does not say why
-  a record left. Usually it is a completed repair, but a work order can also be cancelled,
-  merged or reclassified.
+- **"Cleared" means "stopped appearing"**, not "confirmed fixed", unless the fault also
+  turns up in the closed feed. Where it does, Thames Water's own `Completed`/`Canceled`
+  verdict is shown. Where it does not — currently about 40% of departures — we genuinely do
+  not know what happened, and the site says so rather than assuming a repair.
 - **Time-to-fix is measured from Thames Water's own raised date** to the day the fault left
   the map. Faults already open when tracking began are included, so if anything the figure
   flatters them.

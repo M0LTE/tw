@@ -418,6 +418,39 @@ def areas(conn: sqlite3.Connection, today: dt.date) -> dict:
     }
 
 
+def closure_outcomes(conn: sqlite3.Connection) -> dict:
+    """What actually happened to faults that left the open feed.
+
+    Until now the site could only say a fault "stopped appearing". The closed
+    work order layers give Thames Water's own verdict — Completed or Canceled —
+    for those we can match, which is the difference between a repair and a
+    cancellation.
+    """
+    listed = dict(conn.execute(
+        "SELECT status, count(*) FROM closed_faults GROUP BY status"
+    ).fetchall())
+
+    gone = conn.execute("SELECT count(*) FROM faults WHERE is_open = 0").fetchone()[0]
+    matched = dict(conn.execute(
+        "SELECT cf.status, count(*) FROM faults f JOIN closed_faults cf ON cf.id = f.id "
+        "WHERE f.is_open = 0 GROUP BY cf.status"
+    ).fetchall())
+    resolved_matched = sum(matched.values())
+
+    return {
+        "listed": listed,
+        "listed_total": sum(listed.values()),
+        "with_closure_date": conn.execute(
+            "SELECT count(*) FROM closed_faults WHERE closure_at IS NOT NULL"
+        ).fetchone()[0],
+        # Of the faults we watched leave the open feed, how many can we account for.
+        "departed": gone,
+        "matched": resolved_matched,
+        "matched_by_status": matched,
+        "unexplained": gone - resolved_matched,
+    }
+
+
 def public_reports(conn: sqlite3.Connection, today: dt.date) -> dict:
     """Problems the public has reported that are not yet work orders.
 
@@ -492,6 +525,7 @@ def build(db_path: Path, out: Path) -> None:
     payload["reports"] = report_summary(conn, today)
     payload["areas"] = areas(conn, today)
     payload["external_flooding"] = external_sewer_flooding(conn, today)
+    payload["closure"] = closure_outcomes(conn)
     _write(out / "summary.json", payload)
     _write(out / "open.json", open_faults(conn, today))
     _write(out / "reports.json", public_reports(conn, today))

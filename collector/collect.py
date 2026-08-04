@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from . import arcgis, model, store
-from .sources import SOURCES, WORK_ORDER, Source
+from .sources import CLOSED, REPORT, SOURCES, WORK_ORDER, Source
 
 log = logging.getLogger("collector")
 
@@ -27,6 +27,14 @@ DB = ROOT / "data" / "faults.db"
 # fixed overnight" would poison the history, so we refuse to write the delta.
 MIN_RETAINED_FRACTION = 0.5
 
+# One normaliser per source kind. Keyed rather than branched, so adding a kind
+# without a normaliser fails loudly instead of quietly using the wrong one.
+NORMALISERS = {
+    WORK_ORDER: model.normalise,
+    CLOSED: model.normalise,      # same schema as the open layers
+    REPORT: model.normalise_report,
+}
+
 
 def fetch(source: Source) -> dict[str, dict]:
     """All current records from one layer, keyed by record id."""
@@ -34,7 +42,10 @@ def fetch(source: Source) -> dict[str, dict]:
     layer_url = f"{source.service_url}/{layer_id}"
     log.info("fetching %s (%s)", source.label, layer_url)
 
-    normalise = model.normalise if source.kind == WORK_ORDER else model.normalise_report
+    # Dispatch by kind explicitly. This was an `if work_order else report`
+    # binary, which silently sent closed work orders through the report
+    # normaliser the moment a third kind existed.
+    normalise = NORMALISERS[source.kind]
     records: dict[str, dict] = {}
     skipped = 0
     for feature in arcgis.query_all(layer_url):
@@ -171,7 +182,11 @@ def main(argv: list[str] | None = None) -> int:
     conn = store.rebuild(args.db, args.deltas)
     open_now = conn.execute("SELECT count(*) FROM faults WHERE is_open = 1").fetchone()[0]
     reports_now = conn.execute("SELECT count(*) FROM reports WHERE is_current = 1").fetchone()[0]
-    log.info("database rebuilt: %d open faults, %d live reports", open_now, reports_now)
+    closed_now = conn.execute("SELECT count(*) FROM closed_faults WHERE is_listed = 1").fetchone()[0]
+    log.info(
+        "database rebuilt: %d open faults, %d closed listed, %d live reports",
+        open_now, closed_now, reports_now,
+    )
     conn.close()
 
     # Consumed by the workflow to write the commit message, so it reports every
@@ -181,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         "observed_at": observed_at,
         "open": open_now,
         "reports": reports_now,
+        "closed": closed_now,
         "changes": delta.tally(),
     }))
     return 0

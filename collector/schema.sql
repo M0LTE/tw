@@ -69,6 +69,54 @@ CREATE INDEX IF NOT EXISTS fault_events_fault ON fault_events (fault_id, observe
 CREATE INDEX IF NOT EXISTS fault_events_kind  ON fault_events (kind, observed_at);
 CREATE INDEX IF NOT EXISTS fault_events_field ON fault_events (field, observed_at);
 
+-- Work orders that have left the open feed and are published as finished.
+-- Deliberately not merged into `faults`: that table is exactly what the open
+-- feed said, and every published figure derives from it. This one has its own
+-- retention and its own arrival pattern, so it joins on `id` at build time
+-- rather than mixing rows.
+CREATE TABLE IF NOT EXISTS closed_faults (
+    id                      TEXT PRIMARY KEY,   -- WorkOrderID (Salesforce id)
+    source                  TEXT NOT NULL,      -- 'clean' | 'waste'
+    work_order_number       TEXT,
+    case_number             TEXT,
+    case_id                 TEXT,
+    case_record_type        TEXT,
+    journey_type            TEXT,
+    high_level_journey_type TEXT,
+    mid_level_work_type     TEXT,
+    priority_flag           TEXT,
+    status                  TEXT,
+    street                  TEXT,
+    thoroughfare            TEXT,
+    postcode                TEXT,
+    outcode                 TEXT,
+    city                    TEXT,
+    lon                     REAL,
+    lat                     REAL,
+    easting                 REAL,
+    northing                REAL,
+
+    -- Thames Water's own timestamps.
+    raised_at               TEXT,
+    closure_at              TEXT,
+    repair_complete_at      TEXT,
+    last_modified_at        TEXT,
+    open_line_items         INTEGER,
+    closed_line_items       INTEGER,
+    remain_on_map_hrs       INTEGER,
+    show_on_map             TEXT,
+
+    -- Our observations of the closed feed.
+    first_seen_at  TEXT NOT NULL,
+    last_seen_at   TEXT NOT NULL,
+    delisted_at    TEXT,           -- aged out of the rolling window
+    is_listed      INTEGER NOT NULL DEFAULT 1,
+    reappearances  INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS closed_faults_status ON closed_faults (status);
+CREATE INDEX IF NOT EXISTS closed_faults_listed ON closed_faults (is_listed);
+
 -- Problems reported by the public that have not yet become work orders --
 -- the map calls them "Leak". Thames Water keeps only a rolling seven days of
 -- these, so a report that is never converted into a work order vanishes from

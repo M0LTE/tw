@@ -203,6 +203,16 @@ SPECS: dict[str, TableSpec] = {
         gone_column="resolved_at",
         events_table="fault_events",
     ),
+    # Closed work orders share the fault schema; the interesting field is
+    # `status`, which is Completed or Canceled rather than a lifecycle stage.
+    sources.CLOSED: TableSpec(
+        table="closed_faults",
+        fields=model.FIELDS,
+        tracked=("status", "closure_at", "repair_complete_at"),
+        live_column="is_listed",
+        gone_column="delisted_at",
+        events_table=None,
+    ),
     # Reports have no status to progress through, so there is nothing worth
     # recording beyond when we first and last saw them.
     sources.REPORT: TableSpec(

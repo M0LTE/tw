@@ -529,6 +529,95 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(result["by_status"], {"Reported": 40})
 
 
+class SourceDispatchTests(unittest.TestCase):
+    """Guards the bug where a third source kind used the wrong normaliser."""
+
+    def test_every_source_kind_has_a_normaliser(self):
+        from collector.collect import NORMALISERS
+
+        for source in sources.SOURCES:
+            self.assertIn(source.kind, NORMALISERS, f"{source.key} has no normaliser")
+
+    def test_every_source_kind_has_a_table(self):
+        for source in sources.SOURCES:
+            self.assertIn(source.kind, store.SPECS, f"{source.key} has no table spec")
+
+    def test_closed_work_orders_use_the_work_order_normaliser(self):
+        # They were silently going through normalise_report, which produced
+        # report-shaped rows keyed on GlobalID instead of WorkOrderID.
+        from collector.collect import NORMALISERS
+
+        normalise = NORMALISERS[sources.CLOSED]
+        record_id, record = normalise(feature("WO9", WorkOrderStatus="Completed"), "clean_closed")
+        self.assertEqual(record_id, "WO9", "must key on WorkOrderID")
+        self.assertEqual(record["status"], "Completed")
+        self.assertIn("work_order_number", record)
+        self.assertNotIn("reported_at", record, "must not be a report record")
+
+
+class ClosureOutcomeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = Path(self.tmp.name) / "faults.db"
+        deltas = Path(self.tmp.name) / "deltas"
+
+        # Day 0: three faults open.
+        day0 = records(feature("A"), feature("B"), feature("C"))
+        d0 = store.Delta(observed_at="2026-01-01T00:00:00+00:00", source_counts={"waste": 3})
+        d0.for_kind(sources.WORK_ORDER).appeared = day0
+        store.write_delta(deltas, d0)
+
+        # Day 1: A and B leave the open feed; both turn up closed, one cancelled.
+        d1 = store.Delta(observed_at="2026-01-02T00:00:00+00:00", source_counts={"waste": 1})
+        d1.for_kind(sources.WORK_ORDER).resolved = ["A", "B"]
+        d1.for_kind(sources.CLOSED).appeared = {
+            "A": records(feature("A", WorkOrderStatus="Completed"), source="clean_closed")["A"],
+            "B": records(feature("B", WorkOrderStatus="Canceled"), source="clean_closed")["B"],
+            # A closed record we never saw open, which is the common case.
+            "Z": records(feature("Z", WorkOrderStatus="Completed"), source="clean_closed")["Z"],
+        }
+        store.write_delta(deltas, d1)
+        store.rebuild(self.db, deltas).close()
+
+    def test_closed_records_land_in_their_own_table(self):
+        conn = sqlite3.connect(self.db)
+        self.assertEqual(conn.execute("SELECT count(*) FROM closed_faults").fetchone()[0], 3)
+        # `faults` must stay exactly what the open feed said.
+        self.assertEqual(conn.execute("SELECT count(*) FROM faults").fetchone()[0], 3)
+        self.assertIsNone(
+            conn.execute("SELECT id FROM faults WHERE id='Z'").fetchone(),
+            "a closed-only record must not appear in faults",
+        )
+        conn.close()
+
+    def test_outcomes_separate_completed_from_cancelled(self):
+        from collector import build_site
+
+        conn = sqlite3.connect(self.db)
+        conn.row_factory = sqlite3.Row
+        result = build_site.closure_outcomes(conn)
+        conn.close()
+
+        self.assertEqual(result["departed"], 2)
+        self.assertEqual(result["matched"], 2)
+        self.assertEqual(result["matched_by_status"], {"Completed": 1, "Canceled": 1})
+        self.assertEqual(result["unexplained"], 0)
+        self.assertEqual(result["listed_total"], 3)
+
+    def test_unmatched_departures_are_counted_not_assumed_fixed(self):
+        conn = sqlite3.connect(self.db)
+        conn.execute("DELETE FROM closed_faults WHERE id = 'B'")
+        conn.commit()
+        conn.row_factory = sqlite3.Row
+        from collector import build_site
+
+        result = build_site.closure_outcomes(conn)
+        conn.close()
+        self.assertEqual(result["matched"], 1)
+        self.assertEqual(result["unexplained"], 1, "a departure with no closed record is unknown")
+
+
 class BuildSiteTests(unittest.TestCase):
     def test_day_index_round_trips(self):
         from collector.build_site import EPOCH, day_index

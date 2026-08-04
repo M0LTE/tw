@@ -165,6 +165,10 @@ These matter if you are going to quote the numbers at anyone.
 
 ## Licence and attribution
 
+Licensed under the [GNU Affero General Public License v3.0 or later](LICENSE). The AGPL's
+network clause is the point: anyone running a modified version of this as a public website
+has to publish their changes, so a fork cannot quietly alter how the numbers are counted.
+
 Not affiliated with or endorsed by Thames Water Utilities Ltd. The underlying records are
 Thames Water's own published data, reproduced unchanged. Map tiles © OpenStreetMap
 contributors.

@@ -1,0 +1,92 @@
+name: Deploy site
+
+# Publishes the site. Kept separate from collection so a UI or copy fix reaches
+# production by being merged, without having to run the collector to get there.
+#
+# The database and the site JSON are both derived, so this rebuilds them from
+# the committed delta log rather than carrying artefacts between workflows.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'collector/**'
+      - 'data/deltas/**'
+      - '.github/workflows/deploy.yml'
+  # Called by collect.yml after it commits a snapshot. A push made with the
+  # default GITHUB_TOKEN deliberately does not trigger other workflows, so the
+  # collector has to ask for the deploy explicitly rather than rely on `push`.
+  workflow_call:
+  workflow_dispatch:
+
+# Pages allows one deployment at a time; queue rather than cancel, so a
+# collection run's publish is never dropped in favour of a code push.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Deploy the tip of the branch, not the SHA that triggered the run:
+          # when collect.yml calls this, its snapshot commit lands first and we
+          # want that data, not the commit it started from.
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Rebuild the database from the change log
+        run: python -m collector.collect --rebuild-only
+
+      - name: Build the site data
+        run: python -m collector.build_site
+
+      - name: Check the site data before publishing it
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          summary = json.loads(pathlib.Path('web/data/summary.json').read_text())
+          open_ = json.loads(pathlib.Path('web/data/open.json').read_text())
+          reports = json.loads(pathlib.Path('web/data/reports.json').read_text())
+          assert summary['totals']['open'] == len(open_['cols']['id']), 'open count mismatch'
+          assert summary['totals']['open'] > 0, 'no open faults'
+          assert len(reports['cols']['id']) == len(reports['cols']['r']), 'ragged report columns'
+          print(f"{summary['totals']['open']} open faults, {summary['reports']['current']} live reports")
+          PY
+
+      - name: Assemble the site
+        run: |
+          cp data/faults.db web/faults.db
+          gzip -9 -c data/faults.db > web/faults.db.gz
+
+      # enablement: true turns Pages on if it has never been configured, so the
+      # first run does not fail on "Get Pages site failed".
+      - uses: actions/configure-pages@v6
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5

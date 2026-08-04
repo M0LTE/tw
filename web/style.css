@@ -106,7 +106,14 @@ main { padding: clamp(16px, 3vw, 28px) clamp(16px, 4vw, 36px) 64px; max-width: 1
 }
 .card > header { margin-bottom: 14px; }
 .card h2 { margin: 0; font-size: 15px; letter-spacing: -0.1px; }
-.card header p { margin: 4px 0 0; color: var(--text-dim); font-size: 13px; max-width: 70ch; }
+/* 70ch left these subtitles occupying about 40% of a wide card, so the wrap
+   read as a hard line break rather than natural flow. Wide enough to use the
+   card, still short of the full 170-odd characters the container would allow;
+   `balance` keeps a two-line subtitle from ending in a stub. */
+.card header p {
+  margin: 4px 0 0; color: var(--text-dim); font-size: 13px;
+  max-width: 108ch; text-wrap: balance;
+}
 
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; }
 
@@ -269,7 +276,12 @@ blockquote {
 blockquote p { margin: 0 0 8px; font-size: 14px; }
 blockquote cite { font-size: 12.5px; color: var(--text-dim); font-style: normal; }
 
-.footnote { font-size: 12.5px; color: var(--text-dim); margin: 12px 0 0; max-width: 90ch; }
+/* `pretty` rather than `balance`: these run to several lines, where balancing
+   is capped and pretty's job — no orphaned last word — is the one that matters. */
+.footnote {
+  font-size: 12.5px; color: var(--text-dim); margin: 12px 0 0;
+  max-width: 120ch; text-wrap: pretty;
+}
 .footnote code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 
 /* Rate cell with an inline bar, so the spread reads without a chart. */
@@ -280,3 +292,6 @@ td.rate { position: relative; min-width: 130px; }
   border-radius: 3px; max-width: calc(100% - 60px);
 }
 .rate-value { position: relative; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* Records Thames Water published with no address at all. */
+.pinned { color: var(--text-dim); font-style: italic; }

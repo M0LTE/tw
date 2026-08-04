@@ -63,6 +63,30 @@ function place(fault) {
   return [titleCase(fault.street), titleCase(fault.city)].filter(Boolean).join(', ');
 }
 
+// A small number of records carry no address at all — Thames Water publishes
+// Street, Town and Postcode as null, which happens when someone drops a pin on
+// the map instead of typing an address. Every one of them still has
+// coordinates, so show the position rather than an empty cell.
+function hasAddress(rec, town) {
+  return Boolean(rec.street || town || rec.postcode);
+}
+
+function locationCell(rec, town) {
+  if (hasAddress(rec, town)) {
+    const text = [titleCase(rec.street), titleCase(town)].filter(Boolean).join(', ');
+    return `${escape(text)} <span class="mono">${escape(rec.postcode || '')}</span>`;
+  }
+  if (rec.lat !== null && rec.lat !== undefined) {
+    return `<span class="pinned">Pinned on map</span> ` +
+           `<span class="mono">${rec.lat.toFixed(4)}, ${rec.lon.toFixed(4)}</span>`;
+  }
+  return '<span class="pinned">No location recorded</span>';
+}
+
+const NO_ADDRESS_NOTE =
+  'Thames Water published this one with no street, town or postcode, which happens when a ' +
+  'problem is pinned on the map rather than given an address. The coordinates are theirs.';
+
 // ── Data loading ────────────────────────────────────────────────
 
 async function loadJSON(path) {
@@ -250,7 +274,7 @@ function renderOldest(limit = 25) {
       <td>${formatDate(fault.raised)}</td>
       <td class="age age-${ageClass(fault.age)}">${formatAge(fault.age)}</td>
       <td>${escape(fault.journey || '')}</td>
-      <td class="wrap">${escape(place(fault))} <span class="mono">${escape(fault.postcode || '')}</span></td>
+      <td class="wrap">${locationCell(fault, fault.city)}</td>
       <td>${escape(fault.status || '')}</td>
       <td><span class="pill ${fault.source}">${fault.source === 'clean' ? 'Clean' : 'Waste'}</span></td>`;
     tr.addEventListener('click', () => openDetail(fault));
@@ -297,7 +321,7 @@ const COLUMNS = [
   { key: 'raised', label: 'Raised', render: (x) => formatDate(x.raised) },
   { key: 'age', label: 'Age', cls: 'num', render: (x) => `<span class="age age-${ageClass(x.age)}">${formatAge(x.age)}</span>` },
   { key: 'journey', label: 'Problem', render: (x) => escape(x.journey || '') },
-  { key: 'street', label: 'Where', cls: 'wrap', render: (x) => `${escape(place(x))} <span class="mono">${escape(x.postcode || '')}</span>` },
+  { key: 'street', label: 'Where', cls: 'wrap', render: (x) => locationCell(x, x.city) },
   { key: 'status', label: 'Status', render: (x) => escape(x.status || '') },
   { key: 'source', label: 'Network', render: (x) => `<span class="pill ${x.source}">${x.source === 'clean' ? 'Clean' : 'Waste'}</span>` },
   { key: 'workOrder', label: 'Work order', cls: 'mono', render: (x) => escape(x.workOrder || '') },
@@ -401,6 +425,8 @@ function openDetail(fault) {
     ['Current status', fault.status],
     ['Location', place(fault)],
     ['Postcode', fault.postcode],
+    ['Coordinates', hasAddress(fault, fault.city) || fault.lat === null || fault.lat === undefined
+      ? null : `${fault.lat.toFixed(5)}, ${fault.lon.toFixed(5)}`],
   ].filter(([, v]) => v);
 
   const timeline = history.length
@@ -412,8 +438,11 @@ function openDetail(fault) {
 
   body.innerHTML = `
     <h3>${escape(fault.journey || 'Fault')}${fault.street ? ' — ' + escape(titleCase(fault.street)) : ''}</h3>
-    <p class="sub">${escape(place(fault))} ${escape(fault.postcode || '')}</p>
+    <p class="sub">${hasAddress(fault, fault.city)
+      ? escape(place(fault)) + ' ' + escape(fault.postcode || '')
+      : 'No address published'}</p>
     <dl class="kv">${rows.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>
+    ${hasAddress(fault, fault.city) ? '' : `<p class="footnote" style="margin-top:0">${NO_ADDRESS_NOTE}</p>`}
     <h2 style="font-size:14px;margin:0 0 10px">What we have seen</h2>
     <ul class="timeline">${timeline}</ul>
     ${fault.lat ? `<p style="margin-top:16px"><a href="https://www.openstreetmap.org/?mlat=${fault.lat}&mlon=${fault.lon}#map=17/${fault.lat}/${fault.lon}" target="_blank" rel="noopener">View location on OpenStreetMap ↗</a></p>` : ''}
@@ -473,7 +502,7 @@ function renderReports() {
     tr.innerHTML = `
       <td>${formatDate(r.reported)}</td>
       <td class="num age age-${ageClass(r.age)}">${formatAge(r.age)}</td>
-      <td class="wrap">${escape(titleCase(r.street || ''))} <span class="mono">${escape(r.postcode || '')}</span></td>
+      <td class="wrap">${locationCell(r, r.town)}</td>
       <td>${escape(titleCase(r.town || ''))}</td>
       <td>${r.gone === null
         ? '<span class="pill clean">Showing</span>'
@@ -511,6 +540,8 @@ function openReportDetail(r) {
     ['Location', titleCase(r.street || '')],
     ['Town', titleCase(r.town || '')],
     ['Postcode', r.postcode],
+    ['Coordinates', hasAddress(r, r.town) || r.lat === null || r.lat === undefined
+      ? null : `${r.lat.toFixed(5)}, ${r.lon.toFixed(5)}`],
     ['First recorded here', formatDate(r.firstSeen)],
   ].filter(([, v]) => v);
 
@@ -522,13 +553,16 @@ function openReportDetail(r) {
 
   $('#detail-body').innerHTML = `
     <h3>Reported problem${r.street ? ' — ' + escape(titleCase(r.street)) : ''}</h3>
-    <p class="sub">${escape(titleCase(r.town || ''))} ${escape(r.postcode || '')}</p>
+    <p class="sub">${hasAddress(r, r.town)
+      ? escape(titleCase(r.town || '')) + ' ' + escape(r.postcode || '')
+      : 'No address published'}</p>
     <dl class="kv">${rows.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>
     <h2 style="font-size:14px;margin:0 0 10px">What we have seen</h2>
     <ul class="timeline">
       <li><strong>Reported to Thames Water</strong><div class="when">${escape(formatDate(r.reported))}</div></li>
       ${fate}
     </ul>
+    ${hasAddress(r, r.town) ? '' : `<p class="footnote">${NO_ADDRESS_NOTE}</p>`}
     <p style="margin-top:16px;color:var(--text-dim);font-size:13px">
       This is a public report, not yet a work order. It carries no reference number or repair
       status until Thames Water raises one.
@@ -638,7 +672,9 @@ function renderPlaces() {
   $('#places-blurb').innerHTML =
     `Ranked by open faults per 10,000 households, so the table is not simply a map of where ` +
     `people live. Authorities with fewer than ${formatNumber(areas.min_faults)} open faults ` +
-    `are excluded. ${formatNumber(areas.coverage)}% of open faults have a postcode we could ` +
+    // One decimal deliberately: this is the page's own statement about its data
+    // quality, and formatNumber would round 98.7 up to 99.
+    `are excluded. ${areas.coverage.toFixed(1)}% of open faults have a postcode we could ` +
     `place in a local authority.`;
 
   table.innerHTML =

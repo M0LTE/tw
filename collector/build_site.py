@@ -302,14 +302,81 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
     }
 
 
+def public_reports(conn: sqlite3.Connection, today: dt.date) -> dict:
+    """Problems the public has reported that are not yet work orders.
+
+    Thames Water keeps only a rolling window of these, so we also carry recently
+    departed ones: a report that quietly aged out without becoming a work order
+    is the most interesting thing in this dataset.
+    """
+    town = Dictionary()
+    cols: dict[str, list] = {k: [] for k in ("id", "t", "pc", "st", "r", "f", "g", "lon", "lat")}
+
+    rows = conn.execute(
+        "SELECT id, town, postcode, street, reported_at, first_seen_at, disappeared_at, lon, lat "
+        "FROM reports WHERE is_current = 1 OR disappeared_at >= ? "
+        "ORDER BY reported_at IS NULL, reported_at DESC",
+        ((today - dt.timedelta(days=90)).isoformat(),),
+    )
+    for row in rows:
+        cols["id"].append(row["id"])
+        cols["t"].append(town(row["town"]))
+        cols["pc"].append(row["postcode"])
+        cols["st"].append(row["street"])
+        cols["r"].append(day_index(row["reported_at"]))
+        cols["f"].append(day_index(row["first_seen_at"]))
+        cols["g"].append(day_index(row["disappeared_at"]))
+        cols["lon"].append(None if row["lon"] is None else round(row["lon"], 5))
+        cols["lat"].append(None if row["lat"] is None else round(row["lat"], 5))
+
+    return {
+        "epoch": EPOCH.isoformat(),
+        "today": (today - EPOCH).days,
+        "dict": {"town": town.values},
+        "cols": cols,
+    }
+
+
+def report_summary(conn: sqlite3.Connection, today: dt.date) -> dict:
+    current = conn.execute("SELECT count(*) FROM reports WHERE is_current = 1").fetchone()[0]
+    ever = conn.execute("SELECT count(*) FROM reports").fetchone()[0]
+    gone = conn.execute("SELECT count(*) FROM reports WHERE is_current = 0").fetchone()[0]
+
+    per_day: collections.Counter[int] = collections.Counter()
+    for (reported_at,) in conn.execute("SELECT reported_at FROM reports WHERE is_current = 1"):
+        day = day_index(reported_at)
+        if day is not None:
+            per_day[day] += 1
+
+    oldest, newest = conn.execute(
+        "SELECT min(reported_at), max(reported_at) FROM reports WHERE is_current = 1"
+    ).fetchone()
+    window = None
+    if oldest and newest:
+        window = (dt.date.fromisoformat(newest[:10]) - dt.date.fromisoformat(oldest[:10])).days + 1
+
+    return {
+        "current": current,
+        "ever_seen": ever,
+        "departed": gone,
+        "retention_days": window,
+        "oldest": oldest,
+        "newest": newest,
+        "per_day": [{"d": d, "n": n} for d, n in sorted(per_day.items())],
+    }
+
+
 def build(db_path: Path, out: Path) -> None:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     latest = conn.execute("SELECT max(observed_at) FROM snapshots").fetchone()[0]
     today = dt.date.fromisoformat(latest[:10]) if latest else dt.date.today()
 
-    _write(out / "summary.json", summary(conn, today))
+    payload = summary(conn, today)
+    payload["reports"] = report_summary(conn, today)
+    _write(out / "summary.json", payload)
     _write(out / "open.json", open_faults(conn, today))
+    _write(out / "reports.json", public_reports(conn, today))
     conn.close()
 
 

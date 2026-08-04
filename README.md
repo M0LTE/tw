@@ -56,22 +56,40 @@ The map at `thameswater.co.uk/help/report-a-problem#/view-problems-map` is a Rea
 (`varpo-ui`) which renders public ArcGIS feature layers hosted under Thames Water's
 organisation id `g6o32ZDQ33GpCIu3`. Two layers carry the faults:
 
-| Layer | Service | Rows |
-|---|---|---|
-| `CleanWaterOpenWorkOrder` | `CWOPWOPRD/FeatureServer` | ~9,500 |
-| `WasteWaterOpenWorkOrder` | `WWOPWOPRD/FeatureServer` | ~10,700 |
+| Layer | Service | Rows | What it is |
+|---|---|---|---|
+| `CleanWaterOpenWorkOrder` | `CWOPWOPRD/FeatureServer` | ~9,500 | Work orders |
+| `WasteWaterOpenWorkOrder` | `WWOPWOPRD/FeatureServer` | ~10,700 | Work orders |
+| `Point layer` | `Public_Website_Pending_Pins/FeatureServer` | ~2,100 | Public reports |
 
-Both are read unauthenticated, with `outSR=4326` for WGS84 coordinates. Layer *ids* inside
-each service have changed before, so `collector/arcgis.py` resolves them by name at run time.
+All read unauthenticated, with `outSR=4326` for WGS84 coordinates. Layer *ids* inside each
+service have changed before, so `collector/arcgis.py` resolves them by name at run time.
 
-Each record carries a stable Salesforce work-order id, the raised date, a status along the
+Each **work order** carries a stable Salesforce id, the raised date, a status along the
 lifecycle `Reported → Investigation → Repair Planning → Repair Underway → Repair Complete`,
 a priority flag, street/postcode/town, and a point geometry. Every one of the ~20,000 live
 records has a non-null, unique `WorkOrderID`, which is what we key history on.
 
-The map draws several other layers we deliberately ignore: planned improvement works,
-supply-interruption bulletins, and a "pending pins" layer whose records carry no stable
-identifier and so cannot be tracked over time.
+### The pending pins matter more than they look
+
+When someone reports a problem it appears on the map immediately as a pin the app simply
+labels **"Leak"** — before any work order exists. Those pins have no reference number and no
+repair status, and **Thames Water keeps only a rolling ~7 days of them**. A report that never
+becomes a work order therefore disappears from the public record entirely, with nothing to
+show it was ever made. Daily collection is the only way to see how many reports actually
+turn into work.
+
+They live in their own `reports` table rather than in `faults`: a report has no status and
+no lifecycle, and folding ~2,000 week-old records into the backlog would quietly wreck the
+headline age figures.
+
+> Note for anyone reading the layer definitions in the map's JS bundle: the app requests only
+> `OBJECTID, Street, Postcode, Town` from this layer, but the layer itself also exposes
+> `GlobalID`, `CreationDate` and `EditDate`. The `GlobalID` is unique and non-null, which is
+> what makes these trackable at all — read the layer metadata, not the app's `outFields`.
+
+The map draws other layers we still ignore: planned improvement works and supply-interruption
+bulletins, neither of which is a fault.
 
 ## Data model
 
@@ -80,6 +98,10 @@ observations: `first_seen_at`, `last_seen_at`, `resolved_at`, `is_open`, `reappe
 
 `fault_events` — every observed change: `appeared`, `changed` (with field, old and new
 value), `resolved`, `reappeared`. This is what drives the per-fault timeline.
+
+`reports` — one row per public report ever seen, with `reported_at` (Thames Water's own
+timestamp), `first_seen_at`, `last_seen_at` and `disappeared_at`. Because the source keeps
+only ~7 days, `disappeared_at` is the record that a report existed at all.
 
 `snapshots` — one row per collection run, with per-source counts.
 
@@ -137,6 +159,9 @@ These matter if you are going to quote the numbers at anyone.
   Override with `--force` when a drop is genuine.
 - **History starts the day collection starts.** Ages come from Thames Water's raised dates
   and so reach back to 2023, but backlog and flow trends only begin from the first snapshot.
+- **A public report leaving the map does not mean it became a work order.** The two feeds
+  share no key, so the conversion rate cannot be read off directly — only inferred from
+  location and timing. Treat any such figure as an estimate.
 
 ## Licence and attribution
 

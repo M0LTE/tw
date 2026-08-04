@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
-from . import model
+from . import model, sources
 
 log = logging.getLogger(__name__)
 
@@ -37,22 +37,46 @@ FORMAT_VERSION = 1
 
 
 @dataclass
-class Delta:
-    """One collection run's worth of change."""
+class Change:
+    """What changed for one kind of record (work orders, or public reports)."""
 
-    observed_at: str
-    source_counts: dict[str, int] = field(default_factory=dict)
     appeared: dict[str, dict[str, Any]] = field(default_factory=dict)
     changed: dict[str, dict[str, Any]] = field(default_factory=dict)
     reappeared: dict[str, dict[str, Any]] = field(default_factory=dict)
     resolved: list[str] = field(default_factory=list)
+
+    def is_empty(self) -> bool:
+        return not (self.appeared or self.changed or self.reappeared or self.resolved)
+
+
+@dataclass
+class Delta:
+    """One collection run's worth of change, across every kind of record."""
+
+    observed_at: str
+    source_counts: dict[str, int] = field(default_factory=dict)
+    kinds: dict[str, Change] = field(default_factory=dict)
+
+    def for_kind(self, kind: str) -> Change:
+        return self.kinds.setdefault(kind, Change())
 
     @property
     def total(self) -> int:
         return sum(self.source_counts.values())
 
     def is_empty(self) -> bool:
-        return not (self.appeared or self.changed or self.reappeared or self.resolved)
+        return all(change.is_empty() for change in self.kinds.values())
+
+    def tally(self) -> dict[str, dict[str, int]]:
+        return {
+            kind: {
+                "appeared": len(c.appeared),
+                "changed": len(c.changed),
+                "reappeared": len(c.reappeared),
+                "resolved": len(c.resolved),
+            }
+            for kind, c in self.kinds.items()
+        }
 
 
 def delta_path(root: Path, observed_at: str) -> Path:
@@ -76,14 +100,27 @@ def write_delta(root: Path, delta: Delta) -> Path:
             sort_keys=True,
         )
     ]
-    for fault_id, record in sorted(delta.appeared.items()):
-        lines.append(json.dumps({"op": "add", "id": fault_id, "f": record}, sort_keys=True))
-    for fault_id, record in sorted(delta.reappeared.items()):
-        lines.append(json.dumps({"op": "back", "id": fault_id, "f": record}, sort_keys=True))
-    for fault_id, patch in sorted(delta.changed.items()):
-        lines.append(json.dumps({"op": "set", "id": fault_id, "f": patch}, sort_keys=True))
-    for fault_id in sorted(delta.resolved):
-        lines.append(json.dumps({"op": "gone", "id": fault_id}, sort_keys=True))
+
+    def emit(op: str, record_id: str, kind: str, fields: dict | None = None) -> None:
+        entry: dict[str, Any] = {"op": op, "id": record_id}
+        if fields is not None:
+            entry["f"] = fields
+        # Work orders are the default kind, so older deltas without a "k" still
+        # replay correctly.
+        if kind != DEFAULT_KIND:
+            entry["k"] = kind
+        lines.append(json.dumps(entry, sort_keys=True))
+
+    for kind in sorted(delta.kinds):
+        change = delta.kinds[kind]
+        for record_id, record in sorted(change.appeared.items()):
+            emit("add", record_id, kind, record)
+        for record_id, record in sorted(change.reappeared.items()):
+            emit("back", record_id, kind, record)
+        for record_id, patch in sorted(change.changed.items()):
+            emit("set", record_id, kind, patch)
+        for record_id in sorted(change.resolved):
+            emit("gone", record_id, kind)
 
     body = ("\n".join(lines) + "\n").encode()
     # mtime=0 so identical content produces an identical file, keeping git quiet.
@@ -114,6 +151,42 @@ def read_delta(path: Path) -> Iterator[dict]:
 SCHEMA = (Path(__file__).parent / "schema.sql").read_text()
 
 
+@dataclass(frozen=True)
+class TableSpec:
+    """How one kind of record maps onto the database."""
+
+    table: str
+    fields: tuple[str, ...]
+    tracked: tuple[str, ...]
+    live_column: str
+    gone_column: str
+    events_table: str | None
+
+
+SPECS: dict[str, TableSpec] = {
+    sources.WORK_ORDER: TableSpec(
+        table="faults",
+        fields=model.FIELDS,
+        tracked=model.TRACKED_FIELDS,
+        live_column="is_open",
+        gone_column="resolved_at",
+        events_table="fault_events",
+    ),
+    # Reports have no status to progress through, so there is nothing worth
+    # recording beyond when we first and last saw them.
+    sources.REPORT: TableSpec(
+        table="reports",
+        fields=model.REPORT_FIELDS,
+        tracked=model.REPORT_TRACKED_FIELDS,
+        live_column="is_current",
+        gone_column="disappeared_at",
+        events_table=None,
+    ),
+}
+
+DEFAULT_KIND = sources.WORK_ORDER
+
+
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
@@ -122,28 +195,31 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
-def current_state(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
-    """Latest known record for every fault still present in the feed."""
-    columns = ", ".join(model.FIELDS)
-    rows = conn.execute(f"SELECT id, {columns} FROM faults WHERE is_open = 1")
-    return {row["id"]: {k: row[k] for k in model.FIELDS} for row in rows}
+def current_state(conn: sqlite3.Connection, kind: str = DEFAULT_KIND) -> dict[str, dict[str, Any]]:
+    """Latest known record for everything of ``kind`` still present in the feed."""
+    spec = SPECS[kind]
+    columns = ", ".join(spec.fields)
+    rows = conn.execute(
+        f"SELECT id, {columns} FROM {spec.table} WHERE {spec.live_column} = 1"
+    )
+    return {row["id"]: {k: row[k] for k in spec.fields} for row in rows}
+
+
+def known_ids(conn: sqlite3.Connection, kind: str = DEFAULT_KIND) -> set[str]:
+    """Every id of ``kind`` we have ever seen, so returns are not mistaken for arrivals."""
+    return {row[0] for row in conn.execute(f"SELECT id FROM {SPECS[kind].table}")}
+
+
+EVENT_SQL = (
+    "INSERT INTO fault_events (fault_id, observed_at, kind, field, old_value, new_value) "
+    "VALUES (?, ?, ?, ?, ?, ?)"
+)
 
 
 def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
     observed_at = ""
     counts = {"appeared": 0, "changed": 0, "resolved": 0, "reappeared": 0}
     source_counts: dict[str, int] = {}
-    columns = list(model.FIELDS)
-
-    insert_sql = (
-        f"INSERT INTO faults (id, {', '.join(columns)}, first_seen_at, last_seen_at, is_open) "
-        f"VALUES (?, {', '.join('?' * len(columns))}, ?, ?, 1) "
-        "ON CONFLICT(id) DO UPDATE SET last_seen_at = excluded.last_seen_at"
-    )
-    event_sql = (
-        "INSERT INTO fault_events (fault_id, observed_at, kind, field, old_value, new_value) "
-        "VALUES (?, ?, ?, ?, ?, ?)"
-    )
 
     for entry in entries:
         op = entry.get("op")
@@ -155,62 +231,67 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
 
         if not observed_at:
             raise ValueError("delta is missing its meta line")
-        fault_id = entry["id"]
+
+        record_id = entry["id"]
+        spec = SPECS[entry.get("k", DEFAULT_KIND)]
+        columns = list(spec.fields)
+
+        def event(kind: str, field_name: str | None = None, old=None, new=None) -> None:
+            if spec.events_table:
+                conn.execute(EVENT_SQL, (record_id, observed_at, kind, field_name, old, new))
 
         if op in ("add", "back"):
             record = entry["f"]
             values = [record.get(c) for c in columns]
-            conn.execute(insert_sql, [fault_id, *values, observed_at, observed_at])
+            conn.execute(
+                f"INSERT INTO {spec.table} (id, {', '.join(columns)}, first_seen_at, last_seen_at, {spec.live_column}) "
+                f"VALUES (?, {', '.join('?' * len(columns))}, ?, ?, 1) "
+                "ON CONFLICT(id) DO UPDATE SET last_seen_at = excluded.last_seen_at",
+                [record_id, *values, observed_at, observed_at],
+            )
             if op == "back":
-                # Seen again after we thought it was resolved: Thames Water
-                # either reopened it or briefly dropped it from the feed.
+                # Seen again after we thought it had gone: either it was
+                # reopened, or it briefly dropped out of the feed.
                 conn.execute(
-                    "UPDATE faults SET is_open = 1, resolved_at = NULL, "
+                    f"UPDATE {spec.table} SET {spec.live_column} = 1, {spec.gone_column} = NULL, "
                     "reappearances = reappearances + 1, last_seen_at = ?, "
                     + ", ".join(f"{c} = ?" for c in columns)
                     + " WHERE id = ?",
-                    [observed_at, *values, fault_id],
+                    [observed_at, *values, record_id],
                 )
-                conn.execute(event_sql, (fault_id, observed_at, "reappeared", None, None, None))
+                event("reappeared")
                 counts["reappeared"] += 1
             else:
-                conn.execute(
-                    event_sql, (fault_id, observed_at, "appeared", None, None, record.get("status"))
-                )
+                event("appeared", new=record.get("status"))
                 counts["appeared"] += 1
 
         elif op == "set":
             patch = entry["f"]
             previous = conn.execute(
-                f"SELECT {', '.join(patch)} FROM faults WHERE id = ?", (fault_id,)
+                f"SELECT {', '.join(patch)} FROM {spec.table} WHERE id = ?", (record_id,)
             ).fetchone()
             assignments = ", ".join(f"{k} = ?" for k in patch)
             conn.execute(
-                f"UPDATE faults SET {assignments}, last_seen_at = ? WHERE id = ?",
-                [*patch.values(), observed_at, fault_id],
+                f"UPDATE {spec.table} SET {assignments}, last_seen_at = ? WHERE id = ?",
+                [*patch.values(), observed_at, record_id],
             )
             for key, value in patch.items():
-                if key in model.TRACKED_FIELDS:
+                if key in spec.tracked:
                     old = previous[key] if previous is not None else None
-                    conn.execute(
-                        event_sql,
-                        (
-                            fault_id,
-                            observed_at,
-                            "changed",
-                            key,
-                            None if old is None else str(old),
-                            None if value is None else str(value),
-                        ),
+                    event(
+                        "changed",
+                        key,
+                        None if old is None else str(old),
+                        None if value is None else str(value),
                     )
             counts["changed"] += 1
 
         elif op == "gone":
             conn.execute(
-                "UPDATE faults SET is_open = 0, resolved_at = ? WHERE id = ?",
-                (observed_at, fault_id),
+                f"UPDATE {spec.table} SET {spec.live_column} = 0, {spec.gone_column} = ? WHERE id = ?",
+                (observed_at, record_id),
             )
-            conn.execute(event_sql, (fault_id, observed_at, "resolved", None, None, None))
+            event("resolved")
             counts["resolved"] += 1
 
         else:

@@ -69,6 +69,40 @@ CREATE INDEX IF NOT EXISTS fault_events_fault ON fault_events (fault_id, observe
 CREATE INDEX IF NOT EXISTS fault_events_kind  ON fault_events (kind, observed_at);
 CREATE INDEX IF NOT EXISTS fault_events_field ON fault_events (field, observed_at);
 
+-- Problems reported by the public that have not yet become work orders --
+-- the map calls them "Leak". Thames Water keeps only a rolling seven days of
+-- these, so a report that is never converted into a work order vanishes from
+-- the public record entirely. Collecting them daily is the only way to see
+-- how many reports actually turn into work.
+--
+-- Deliberately a separate table from `faults`: a report has no status, no work
+-- order number and no repair lifecycle, and folding ~2,000 week-old reports
+-- into the backlog would quietly wreck the headline age figures.
+CREATE TABLE IF NOT EXISTS reports (
+    id             TEXT PRIMARY KEY,   -- the layer's GlobalID
+    source         TEXT NOT NULL,
+    problem_type   INTEGER,
+    street         TEXT,
+    postcode       TEXT,
+    outcode        TEXT,
+    town           TEXT,
+    lon            REAL,
+    lat            REAL,
+
+    reported_at    TEXT,               -- Thames Water's CreationDate
+    edited_at      TEXT,
+
+    first_seen_at  TEXT NOT NULL,
+    last_seen_at   TEXT NOT NULL,
+    disappeared_at TEXT,               -- snapshot at which it left the feed
+    is_current     INTEGER NOT NULL DEFAULT 1,
+    reappearances  INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS reports_current  ON reports (is_current, reported_at);
+CREATE INDEX IF NOT EXISTS reports_outcode  ON reports (outcode);
+CREATE INDEX IF NOT EXISTS reports_postcode ON reports (postcode);
+
 -- One row per collection run.
 CREATE TABLE IF NOT EXISTS snapshots (
     observed_at   TEXT PRIMARY KEY,

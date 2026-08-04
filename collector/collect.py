@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from . import arcgis, model, store
-from .sources import SOURCES, Source
+from .sources import SOURCES, WORK_ORDER, Source
 
 log = logging.getLogger("collector")
 
@@ -29,23 +29,45 @@ MIN_RETAINED_FRACTION = 0.5
 
 
 def fetch(source: Source) -> dict[str, dict]:
-    """All current records from one layer, keyed by fault id."""
+    """All current records from one layer, keyed by record id."""
     layer_id = arcgis.resolve_layer_id(source.service_url, source.layer_name)
     layer_url = f"{source.service_url}/{layer_id}"
     log.info("fetching %s (%s)", source.label, layer_url)
 
+    normalise = model.normalise if source.kind == WORK_ORDER else model.normalise_report
     records: dict[str, dict] = {}
     skipped = 0
     for feature in arcgis.query_all(layer_url):
-        normalised = model.normalise(feature, source.key)
+        normalised = normalise(feature, source.key)
         if normalised is None:
             skipped += 1
             continue
-        fault_id, record = normalised
-        records[fault_id] = record
+        record_id, record = normalised
+        records[record_id] = record
 
     log.info("  %d records (%d without an id)", len(records), skipped)
     return records
+
+
+def classify(
+    change: store.Change,
+    live: dict[str, dict],
+    previous: dict[str, dict],
+    known: set[str],
+) -> store.Change:
+    """Split a poll into new / changed / returned / departed."""
+    for record_id, record in live.items():
+        if record_id in previous:
+            patch = model.diff(previous[record_id], record)
+            if patch:
+                change.changed[record_id] = patch
+        elif record_id in known:
+            change.reappeared[record_id] = record
+        else:
+            change.appeared[record_id] = record
+
+    change.resolved = sorted(set(previous) - set(live))
+    return change
 
 
 def build_delta(
@@ -54,20 +76,10 @@ def build_delta(
     source_counts: dict[str, int],
     previous: dict[str, dict],
     known_ids: set[str],
+    kind: str = WORK_ORDER,
 ) -> store.Delta:
     delta = store.Delta(observed_at=observed_at, source_counts=source_counts)
-
-    for fault_id, record in live.items():
-        if fault_id in previous:
-            patch = model.diff(previous[fault_id], record)
-            if patch:
-                delta.changed[fault_id] = patch
-        elif fault_id in known_ids:
-            delta.reappeared[fault_id] = record
-        else:
-            delta.appeared[fault_id] = record
-
-    delta.resolved = sorted(set(previous) - set(live))
+    classify(delta.for_kind(kind), live, previous, known_ids)
     return delta
 
 
@@ -94,48 +106,57 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     conn = store.rebuild(args.db, args.deltas)
-    previous = store.current_state(conn)
-    known_ids = {row[0] for row in conn.execute("SELECT id FROM faults")}
-    log.info("replayed state: %d open, %d ever seen", len(previous), len(known_ids))
+    previous = {kind: store.current_state(conn, kind) for kind in store.SPECS}
+    known = {kind: store.known_ids(conn, kind) for kind in store.SPECS}
+    for kind in store.SPECS:
+        log.info(
+            "replayed %s: %d current, %d ever seen", kind, len(previous[kind]), len(known[kind])
+        )
 
     if args.rebuild_only:
         conn.close()
         return 0
 
-    live: dict[str, dict] = {}
-    source_counts: dict[str, int] = {}
+    observed_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+    delta = store.Delta(observed_at=observed_at)
+    live: dict[str, dict[str, dict]] = {kind: {} for kind in store.SPECS}
+
     for source in SOURCES:
         records = fetch(source)
         if not records:
-            log.error("%s returned no records; aborting rather than recording mass closure", source.key)
-            conn.close()
-            return 1
-        source_counts[source.key] = len(records)
-        live.update(records)
-
-    if previous:
-        retained = len(set(previous) & set(live)) / len(previous)
-        if retained < MIN_RETAINED_FRACTION and not args.force:
             log.error(
-                "only %.1f%% of the %d known open faults came back; refusing to write a delta "
-                "(re-run with --force if the drop is genuine)",
-                retained * 100,
-                len(previous),
+                "%s returned no records; aborting rather than recording mass closure", source.key
             )
             conn.close()
             return 1
+        delta.source_counts[source.key] = len(records)
+        live[source.kind].update(records)
 
-    observed_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
-    delta = build_delta(observed_at, live, source_counts, previous, known_ids)
+    for kind, spec in store.SPECS.items():
+        before = previous[kind]
+        if before:
+            retained = len(set(before) & set(live[kind])) / len(before)
+            if retained < MIN_RETAINED_FRACTION and not args.force:
+                log.error(
+                    "only %.1f%% of the %d current %s records came back; refusing to write a "
+                    "delta (re-run with --force if the drop is genuine)",
+                    retained * 100,
+                    len(before),
+                    kind,
+                )
+                conn.close()
+                return 1
+        classify(delta.for_kind(kind), live[kind], before, known[kind])
 
-    log.info(
-        "delta: %d new, %d changed, %d reappeared, %d resolved (total live %d)",
-        len(delta.appeared),
-        len(delta.changed),
-        len(delta.reappeared),
-        len(delta.resolved),
-        delta.total,
-    )
+    for kind, tally in delta.tally().items():
+        log.info(
+            "%-11s %d new, %d changed, %d reappeared, %d gone",
+            kind + ":",
+            tally["appeared"],
+            tally["changed"],
+            tally["reappeared"],
+            tally["resolved"],
+        )
 
     if delta.is_empty():
         log.info("nothing changed; not writing a delta")
@@ -149,18 +170,16 @@ def main(argv: list[str] | None = None) -> int:
     # Replay from scratch so the database on disk is exactly what the log says.
     conn = store.rebuild(args.db, args.deltas)
     open_now = conn.execute("SELECT count(*) FROM faults WHERE is_open = 1").fetchone()[0]
-    log.info("database rebuilt: %d open faults", open_now)
+    reports_now = conn.execute("SELECT count(*) FROM reports WHERE is_current = 1").fetchone()[0]
+    log.info("database rebuilt: %d open faults, %d live reports", open_now, reports_now)
     conn.close()
 
-    summary = {
+    print(json.dumps({
         "observed_at": observed_at,
         "open": open_now,
-        "appeared": len(delta.appeared),
-        "changed": len(delta.changed),
-        "reappeared": len(delta.reappeared),
-        "resolved": len(delta.resolved),
-    }
-    print(json.dumps(summary))
+        "reports": reports_now,
+        **{k: v for k, v in delta.tally().get(WORK_ORDER, {}).items()},
+    }))
     return 0
 
 

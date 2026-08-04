@@ -169,3 +169,52 @@ def normalise(feature: dict, source_key: str) -> tuple[str, dict[str, Any]] | No
 def diff(old: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
     """Fields in ``new`` whose value differs from ``old``."""
     return {k: v for k, v in new.items() if old.get(k) != v}
+
+
+# --------------------------------------------------------------------------- #
+# Public reports (the "pending pins" layer)
+# --------------------------------------------------------------------------- #
+
+# Problems reported by the public that have not yet become work orders. A far
+# thinner record: no status, no work order number, no repair lifecycle — just
+# what was reported, where, and when. Identity is the layer's GlobalID.
+REPORT_FIELDS: tuple[str, ...] = (
+    "source",
+    "problem_type",
+    "street",
+    "postcode",
+    "outcode",
+    "town",
+    "lon",
+    "lat",
+    "reported_at",
+    "edited_at",
+)
+
+REPORT_TRACKED_FIELDS: tuple[str, ...] = ("street", "postcode", "town")
+
+
+def normalise_report(feature: dict, source_key: str) -> tuple[str, dict[str, Any]] | None:
+    """Turn one pending-pin feature into ``(report_id, record)``."""
+    attrs = feature.get("attributes") or {}
+    report_id = _text(attrs.get("GlobalID"))
+    if not report_id:
+        return None
+
+    geometry = feature.get("geometry") or {}
+    postcode = _text(attrs.get("Postcode"))
+    postcode = postcode.upper() if postcode else None
+
+    record: dict[str, Any] = {
+        "source": source_key,
+        "problem_type": _int(attrs.get("ProblemType")),
+        "street": _text(attrs.get("Street")),
+        "postcode": postcode,
+        "outcode": outcode_of(postcode),
+        "town": _text(attrs.get("Town")),
+        "lon": _num(geometry.get("x")),
+        "lat": _num(geometry.get("y")),
+        "reported_at": epoch_ms_to_iso(attrs.get("CreationDate")),
+        "edited_at": epoch_ms_to_iso(attrs.get("EditDate")),
+    }
+    return report_id, record

@@ -16,6 +16,7 @@
   --c-waste: #7a5cc4;
   --c-raised: #d1495b;
   --c-resolved: #2e9e6b;
+  --c-report: #6b7c8d;
 
   --age-0: #2e9e6b;
   --age-1: #7cb342;
@@ -202,6 +203,7 @@ td.wrap { white-space: normal; min-width: 220px; }
 #map { height: min(74vh, 780px); border-radius: var(--radius); border: 1px solid var(--border); z-index: 1; }
 .map-legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 12.5px; color: var(--text-dim); }
 .map-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.map-legend i.hollow { background: none; border: 1.5px solid var(--c-report); }
 .map-note { margin-left: auto; }
 .leaflet-popup-content { font: inherit; font-size: 13px; }
 .leaflet-container { background: var(--surface-2); }

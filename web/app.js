@@ -153,6 +153,15 @@ function renderKPIs() {
           value: '–',
           note: 'Needs a second daily snapshot',
         },
+    s.reports && s.reports.current
+      ? {
+          label: 'Reported, not yet work',
+          value: formatNumber(s.reports.current),
+          note: s.reports.retention_days
+            ? `public reports on the map; kept ~${s.reports.retention_days} days`
+            : 'public reports awaiting a work order',
+        }
+      : null,
     s.resolution.n
       ? {
           label: 'Typical time to clear',
@@ -167,7 +176,7 @@ function renderKPIs() {
   ];
 
   $('#kpis').replaceChildren(
-    ...cards.map((c) => {
+    ...cards.filter(Boolean).map((c) => {
       const div = document.createElement('div');
       div.className = 'kpi';
       div.innerHTML = `<div class="kpi-label"></div><div class="kpi-value ${c.tone || ''}"></div><div class="kpi-note"></div>`;
@@ -346,13 +355,8 @@ function renderFaults() {
   }
 }
 
-function exportCSV() {
-  const header = ['work_order', 'raised', 'age_days', 'status', 'problem', 'work_type', 'street', 'postcode', 'town', 'network', 'lat', 'lon'];
-  const rows = state.filtered.map((x) => [
-    x.workOrder, x.raised === null ? '' : dayToDate(x.raised).toISOString().slice(0, 10), x.age ?? '',
-    x.status, x.journey, x.workType, x.street, x.postcode, x.city, x.source, x.lat, x.lon,
-  ]);
-  const csv = [header, ...rows]
+function downloadCSV(rows, filename) {
+  const csv = rows
     .map((r) => r.map((v) => {
       const s = String(v ?? '');
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -362,9 +366,18 @@ function exportCSV() {
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `thames-water-faults-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function exportCSV() {
+  const header = ['work_order', 'raised', 'age_days', 'status', 'problem', 'work_type', 'street', 'postcode', 'town', 'network', 'lat', 'lon'];
+  const rows = state.filtered.map((x) => [
+    x.workOrder, x.raised === null ? '' : dayToDate(x.raised).toISOString().slice(0, 10), x.age ?? '',
+    x.status, x.journey, x.workType, x.street, x.postcode, x.city, x.source, x.lat, x.lon,
+  ]);
+  downloadCSV([header, ...rows], `thames-water-faults-${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
 // ── Detail dialog ───────────────────────────────────────────────
@@ -404,6 +417,151 @@ function openDetail(fault) {
   $('#detail').showModal();
 }
 
+// ── Public reports ──────────────────────────────────────────────
+//
+// Problems the public has reported that have not become work orders. Thames
+// Water keeps only a rolling window of these, so a report can vanish from
+// their map without ever becoming work — which is the point of keeping them.
+
+const reportState = { all: [], filtered: [], page: 0, search: '', state: '' };
+
+function expandReports(data) {
+  const { dict, cols } = data;
+  return cols.id.map((id, i) => {
+    const row = {
+      i, id,
+      town: dict.town[cols.t[i]],
+      postcode: cols.pc[i],
+      street: cols.st[i],
+      reported: cols.r[i],
+      firstSeen: cols.f[i],
+      gone: cols.g[i],
+      lon: cols.lon[i],
+      lat: cols.lat[i],
+    };
+    row.age = row.reported === null ? null : data.today - row.reported;
+    row.haystack = [row.street, row.postcode, row.town].filter(Boolean).join(' ').toLowerCase();
+    return row;
+  });
+}
+
+function applyReportFilters() {
+  const needle = reportState.search.trim().toLowerCase();
+  reportState.filtered = reportState.all.filter((r) => {
+    if (reportState.state === 'current' && r.gone !== null) return false;
+    if (reportState.state === 'gone' && r.gone === null) return false;
+    if (needle && !r.haystack.includes(needle)) return false;
+    return true;
+  });
+  reportState.page = 0;
+  renderReports();
+}
+
+function renderReports() {
+  const table = $('#table-reports');
+  table.innerHTML =
+    '<thead><tr><th>Reported</th><th>Age</th><th>Where</th><th>Town</th><th>On the map now?</th></tr></thead>';
+  const body = document.createElement('tbody');
+  const start = reportState.page * PAGE_SIZE;
+
+  for (const r of reportState.filtered.slice(start, start + PAGE_SIZE)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${formatDate(r.reported)}</td>
+      <td class="num age age-${ageClass(r.age)}">${formatAge(r.age)}</td>
+      <td class="wrap">${escape(titleCase(r.street || ''))} <span class="mono">${escape(r.postcode || '')}</span></td>
+      <td>${escape(titleCase(r.town || ''))}</td>
+      <td>${r.gone === null
+        ? '<span class="pill clean">Showing</span>'
+        : `<span class="pill">Gone ${escape(formatDate(r.gone))}</span>`}</td>`;
+    tr.addEventListener('click', () => openReportDetail(r));
+    body.append(tr);
+  }
+  table.replaceChildren(table.querySelector('thead'), body);
+
+  $('#r-count').textContent =
+    `${formatNumber(reportState.filtered.length)} of ${formatNumber(reportState.all.length)} reports`;
+
+  const pages = Math.ceil(reportState.filtered.length / PAGE_SIZE) || 1;
+  const pager = $('#r-pager');
+  pager.replaceChildren();
+  if (pages > 1) {
+    const prev = document.createElement('button');
+    prev.textContent = '‹ Previous';
+    prev.disabled = reportState.page === 0;
+    prev.addEventListener('click', () => { reportState.page--; renderReports(); window.scrollTo({ top: 0 }); });
+    const label = document.createElement('span');
+    label.textContent = `Page ${reportState.page + 1} of ${formatNumber(pages)}`;
+    const next = document.createElement('button');
+    next.textContent = 'Next ›';
+    next.disabled = reportState.page >= pages - 1;
+    next.addEventListener('click', () => { reportState.page++; renderReports(); window.scrollTo({ top: 0 }); });
+    pager.append(prev, label, next);
+  }
+}
+
+function openReportDetail(r) {
+  const rows = [
+    ['Reported', formatDate(r.reported)],
+    ['Age', r.age === null ? null : `${formatNumber(r.age)} days`],
+    ['Location', titleCase(r.street || '')],
+    ['Town', titleCase(r.town || '')],
+    ['Postcode', r.postcode],
+    ['First recorded here', formatDate(r.firstSeen)],
+  ].filter(([, v]) => v);
+
+  const fate = r.gone === null
+    ? `<li><strong>Still showing on Thames Water's map</strong>
+         <div class="when">as of the last collection</div></li>`
+    : `<li><strong>Dropped off Thames Water's map</strong>
+         <div class="when">${escape(formatDate(r.gone))}</div></li>`;
+
+  $('#detail-body').innerHTML = `
+    <h3>Reported problem${r.street ? ' — ' + escape(titleCase(r.street)) : ''}</h3>
+    <p class="sub">${escape(titleCase(r.town || ''))} ${escape(r.postcode || '')}</p>
+    <dl class="kv">${rows.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>
+    <h2 style="font-size:14px;margin:0 0 10px">What we have seen</h2>
+    <ul class="timeline">
+      <li><strong>Reported to Thames Water</strong><div class="when">${escape(formatDate(r.reported))}</div></li>
+      ${fate}
+    </ul>
+    <p style="margin-top:16px;color:var(--text-dim);font-size:13px">
+      This is a public report, not yet a work order. It carries no reference number or repair
+      status until Thames Water raises one.
+    </p>
+    ${r.lat ? `<p style="margin-top:10px"><a href="https://www.openstreetmap.org/?mlat=${r.lat}&mlon=${r.lon}#map=17/${r.lat}/${r.lon}" target="_blank" rel="noopener">View location on OpenStreetMap ↗</a></p>` : ''}
+  `;
+  $('#detail').showModal();
+}
+
+function exportReportsCSV() {
+  const header = ['reported', 'age_days', 'street', 'postcode', 'town', 'still_on_map', 'left_map', 'lat', 'lon'];
+  const rows = reportState.filtered.map((r) => [
+    r.reported === null ? '' : dayToDate(r.reported).toISOString().slice(0, 10),
+    r.age ?? '', r.street, r.postcode, r.town,
+    r.gone === null ? 'yes' : 'no',
+    r.gone === null ? '' : dayToDate(r.gone).toISOString().slice(0, 10),
+    r.lat, r.lon,
+  ]);
+  downloadCSV([header, ...rows], `thames-water-reports-${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+function renderReportsBlurb() {
+  const r = state.summary.reports;
+  if (!r || !r.current) {
+    $('#reports-blurb').textContent =
+      'No public reports have been collected yet.';
+    return;
+  }
+  const retention = r.retention_days ? `about ${r.retention_days} days` : 'a short rolling window';
+  $('#reports-blurb').innerHTML =
+    `When you report a problem, it appears on Thames Water's map straight away as a "Leak" pin — ` +
+    `before any work order exists. Those pins carry no reference number and no repair status, and ` +
+    `Thames Water only keeps <strong>${escape(retention)}</strong> of them. A report that is never ` +
+    `turned into work simply disappears. There are <strong>${formatNumber(r.current)}</strong> ` +
+    `showing right now; we keep them after they go.`;
+}
+
 // ── Map ─────────────────────────────────────────────────────────
 
 function ageColour(days) {
@@ -438,8 +596,22 @@ function renderMap() {
     }).on('click', () => openDetail(fault)),
   );
 
+  // Public reports, drawn hollow so they read as "reported, not yet work".
+  const reports = reportState.all.filter((r) => r.gone === null && r.lat !== null && r.lon !== null);
+  for (const r of reports) {
+    markers.push(
+      L.circleMarker([r.lat, r.lon], {
+        radius: 3.5,
+        weight: 1.5,
+        color: 'var(--c-report)',
+        fillOpacity: 0,
+      }).on('click', () => openReportDetail(r)),
+    );
+  }
+
   state.mapLayer = L.layerGroup(markers).addTo(state.map);
-  $('#map-note').textContent = `${formatNumber(points.length)} faults plotted`;
+  $('#map-note').textContent =
+    `${formatNumber(points.length)} faults and ${formatNumber(reports.length)} reports plotted`;
   setTimeout(() => state.map.invalidateSize(), 0);
 }
 
@@ -512,6 +684,23 @@ function wireUp() {
   });
 
   $('#f-export').addEventListener('click', exportCSV);
+
+  const reportSearch = $('#r-search');
+  let reportTimer;
+  reportSearch.addEventListener('input', () => {
+    clearTimeout(reportTimer);
+    reportTimer = setTimeout(() => { reportState.search = reportSearch.value; applyReportFilters(); }, 160);
+  });
+  $('#r-state').addEventListener('change', (e) => { reportState.state = e.target.value; applyReportFilters(); });
+  $('#r-reset').addEventListener('click', () => {
+    reportState.search = '';
+    reportState.state = '';
+    reportSearch.value = '';
+    $('#r-state').value = '';
+    applyReportFilters();
+  });
+  $('#r-export').addEventListener('click', exportReportsCSV);
+
   $('#detail .dialog-close').addEventListener('click', () => $('#detail').close());
   $('#detail').addEventListener('click', (e) => { if (e.target.id === 'detail') $('#detail').close(); });
 }
@@ -521,12 +710,15 @@ function wireUp() {
 async function main() {
   wireUp();
   try {
-    const [summary, open] = await Promise.all([
+    const [summary, open, reports] = await Promise.all([
       loadJSON('data/summary.json'),
       loadJSON('data/open.json'),
+      loadJSON('data/reports.json').catch(() => null),
     ]);
 
     state.summary = summary;
+    reportState.all = reports ? expandReports(reports) : [];
+    reportState.filtered = reportState.all;
     state.epoch = open.epoch;
     state.today = open.today;
     state.faults = expand(open);
@@ -549,7 +741,9 @@ async function main() {
     renderOverview();
     renderOldest();
     renderPlaces();
+    renderReportsBlurb();
     applyFilters();
+    applyReportFilters();
 
     $('#loading').hidden = true;
     show(location.hash.slice(1) || 'overview');

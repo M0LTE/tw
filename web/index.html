@@ -29,6 +29,7 @@
 <nav class="tabs" role="tablist">
   <button role="tab" data-view="overview" class="active">Overview</button>
   <button role="tab" data-view="faults">Faults</button>
+  <button role="tab" data-view="reports">Reports</button>
   <button role="tab" data-view="map">Map</button>
   <button role="tab" data-view="places">Places</button>
   <button role="tab" data-view="about">About</button>
@@ -115,6 +116,29 @@
     <div class="pager" id="pager"></div>
   </section>
 
+  <!-- ── Public reports ───────────────────────────────────────── -->
+  <section id="view-reports" class="view" hidden>
+    <section class="card">
+      <header>
+        <h2>Problems the public has reported</h2>
+        <p id="reports-blurb"></p>
+      </header>
+    </section>
+    <div class="filters">
+      <input type="search" id="r-search" placeholder="Search street, postcode or town…" autocomplete="off">
+      <select id="r-state">
+        <option value="">Showing now and recently gone</option>
+        <option value="current">Still showing on the map</option>
+        <option value="gone">Dropped off the map</option>
+      </select>
+      <button id="r-reset" class="ghost">Reset</button>
+      <span class="result-count" id="r-count"></span>
+      <button id="r-export" class="ghost">Download CSV</button>
+    </div>
+    <div class="table-wrap"><table id="table-reports"></table></div>
+    <div class="pager" id="r-pager"></div>
+  </section>
+
   <!-- ── Map ──────────────────────────────────────────────────── -->
   <section id="view-map" class="view" hidden>
     <div class="map-legend">
@@ -124,6 +148,7 @@
       <span><i style="background:var(--age-2)"></i> &lt; 3 months</span>
       <span><i style="background:var(--age-3)"></i> &lt; 1 year</span>
       <span><i style="background:var(--age-4)"></i> 1 year +</span>
+      <span><i class="hollow"></i> Public report, not yet a work order</span>
       <span class="map-note" id="map-note"></span>
     </div>
     <div id="map"></div>
@@ -159,10 +184,17 @@
 
       <h2>Where the data comes from</h2>
       <p>
-        The map is an ArcGIS application. Its two public feature layers —
-        <code>CleanWaterOpenWorkOrder</code> and <code>WasteWaterOpenWorkOrder</code> — are read
-        directly, unchanged. Nothing here is estimated or modelled: every number is a count of
-        Thames Water's own published records.
+        The map is an ArcGIS application. Its public feature layers —
+        <code>CleanWaterOpenWorkOrder</code>, <code>WasteWaterOpenWorkOrder</code> and the
+        pending-pins layer behind the "Leak" markers — are read directly, unchanged. Nothing
+        here is estimated or modelled: every number is a count of Thames Water's own published
+        records.
+      </p>
+      <p>
+        <strong>Work orders and public reports are counted separately.</strong> A report is what
+        appears the moment someone reports a problem; a work order is what exists once Thames
+        Water schedules work. Thames Water keeps only about a week of reports, so one that never
+        becomes a work order vanishes from their map with no trace. Those are kept here.
       </p>
 
       <h2>How to read it</h2>
@@ -171,6 +203,7 @@
         <li><strong>Cleared</strong> means a fault stopped appearing in the feed. That usually means it was fixed, but the feed does not say so explicitly — a work order can also be merged, cancelled or reclassified.</li>
         <li><strong>Time to fix</strong> counts from the raised date to the day the fault left the map. Faults already open on the day tracking began are included, so this figure is if anything generous.</li>
         <li>Faults sometimes reappear after dropping out for a day. Those are counted once and flagged, not double-counted.</li>
+        <li>A report leaving the map does not prove it became a work order. The two feeds share no reference number, so the link can only be inferred from place and timing.</li>
       </ul>
 
       <h2>Check the numbers yourself</h2>

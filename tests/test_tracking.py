@@ -7,6 +7,7 @@ thing tomorrow, so these focus on the tracking logic rather than the HTTP layer.
 from __future__ import annotations
 
 import datetime as dt
+import gzip
 import json
 import sys
 import unittest
@@ -15,7 +16,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from collector import model, store  # noqa: E402
+from collector import model, sources, store  # noqa: E402
 from collector.collect import build_delta  # noqa: E402
 
 
@@ -106,13 +107,15 @@ class DeltaTests(unittest.TestCase):
         previous = records(feature("A"), feature("B"))
         live = records(feature("A", WorkOrderStatus="Repair Underway"), feature("C"))
 
-        delta = build_delta("2026-01-02T00:00:00+00:00", live, {"waste": 2}, previous, {"A", "B"})
+        change = build_delta(
+            "2026-01-02T00:00:00+00:00", live, {"waste": 2}, previous, {"A", "B"}
+        ).for_kind(sources.WORK_ORDER)
 
-        self.assertEqual(set(delta.appeared), {"C"})
-        self.assertEqual(set(delta.changed), {"A"})
-        self.assertEqual(delta.changed["A"], {"status": "Repair Underway"})
-        self.assertEqual(delta.resolved, ["B"])
-        self.assertEqual(delta.reappeared, {})
+        self.assertEqual(set(change.appeared), {"C"})
+        self.assertEqual(set(change.changed), {"A"})
+        self.assertEqual(change.changed["A"], {"status": "Repair Underway"})
+        self.assertEqual(change.resolved, ["B"])
+        self.assertEqual(change.reappeared, {})
 
     def test_unchanged_faults_produce_nothing(self):
         previous = records(feature("A"))
@@ -120,9 +123,11 @@ class DeltaTests(unittest.TestCase):
         self.assertTrue(delta.is_empty())
 
     def test_a_fault_seen_again_is_a_reappearance_not_a_new_fault(self):
-        delta = build_delta("2026-01-03T00:00:00+00:00", records(feature("A")), {"waste": 1}, {}, {"A"})
-        self.assertEqual(set(delta.reappeared), {"A"})
-        self.assertEqual(delta.appeared, {})
+        change = build_delta(
+            "2026-01-03T00:00:00+00:00", records(feature("A")), {"waste": 1}, {}, {"A"}
+        ).for_kind(sources.WORK_ORDER)
+        self.assertEqual(set(change.reappeared), {"A"})
+        self.assertEqual(change.appeared, {})
 
 
 class ReplayTests(unittest.TestCase):
@@ -228,7 +233,7 @@ class ReplayTests(unittest.TestCase):
         # LastModifiedDate ticks constantly; it is recorded but is not progress.
         day1 = records(feature("A", LastModifiedDate=1770265999000))
         delta = self.poll(1, day1, day0, {"A"})
-        self.assertEqual(set(delta.changed["A"]), {"last_modified_at"})
+        self.assertEqual(set(delta.for_kind(sources.WORK_ORDER).changed["A"]), {"last_modified_at"})
 
         conn = self.replay()
         self.assertEqual(
@@ -238,6 +243,141 @@ class ReplayTests(unittest.TestCase):
             conn.execute("SELECT last_modified_at FROM faults WHERE id='A'").fetchone()[0],
             model.epoch_ms_to_iso(1770265999000),
         )
+        conn.close()
+
+
+def pin(global_id: str, **overrides):
+    attrs = {
+        "GlobalID": global_id,
+        "OBJECTID": 1,
+        "ProblemType": 1,
+        "Street": "3 Mandeville Close",
+        "Town": "Reading",
+        "Postcode": "rg30 4jt",
+        "CreationDate": 1785515580000,
+        "EditDate": 1785515580000,
+    }
+    attrs.update(overrides)
+    return {"attributes": attrs, "geometry": {"x": -1.02895, "y": 51.44715}}
+
+
+def report_records(*features, source="reported"):
+    out = {}
+    for f in features:
+        report_id, record = model.normalise_report(f, source)
+        out[report_id] = record
+    return out
+
+
+class ReportNormalisationTests(unittest.TestCase):
+    """Public reports: the layer behind the 'Leak' pins on Thames Water's map."""
+
+    def test_maps_expected_fields(self):
+        report_id, record = model.normalise_report(pin("abc-123"), "reported")
+        self.assertEqual(report_id, "abc-123")
+        self.assertEqual(record["street"], "3 Mandeville Close")
+        self.assertEqual(record["town"], "Reading")
+        self.assertEqual(record["problem_type"], 1)
+        self.assertEqual(record["lat"], 51.44715)
+
+    def test_postcode_is_normalised_like_work_orders(self):
+        _, record = model.normalise_report(pin("abc-123"), "reported")
+        self.assertEqual(record["postcode"], "RG30 4JT")
+        self.assertEqual(record["outcode"], "RG30")
+
+    def test_globalid_is_the_identity(self):
+        # The map app only requests OBJECTID/Street/Postcode/Town, but the
+        # layer also exposes a stable GlobalID -- without it these reports
+        # could not be tracked at all.
+        self.assertIsNone(model.normalise_report(pin("abc"), "reported")[1].get("id"))
+        self.assertIsNone(model.normalise_report(pin(None), "reported"))
+        self.assertIsNone(model.normalise_report(pin("   "), "reported"))
+
+    def test_reported_at_comes_from_creation_date(self):
+        _, record = model.normalise_report(pin("abc-123"), "reported")
+        self.assertEqual(record["reported_at"], model.epoch_ms_to_iso(1785515580000))
+
+
+class ReportTrackingTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.deltas = self.root / "deltas"
+        self.db = self.root / "faults.db"
+        self.addCleanup(self.tmp.cleanup)
+
+    def poll(self, day, *, faults=None, reports=None, prev_faults=None, prev_reports=None,
+             known_faults=(), known_reports=()):
+        stamp = (dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc) + dt.timedelta(days=day)).isoformat()
+        delta = store.Delta(observed_at=stamp, source_counts={"waste": len(faults or {})})
+        from collector.collect import classify
+
+        classify(delta.for_kind(sources.WORK_ORDER), faults or {}, prev_faults or {}, set(known_faults))
+        classify(delta.for_kind(sources.REPORT), reports or {}, prev_reports or {}, set(known_reports))
+        store.write_delta(self.deltas, delta)
+        return delta
+
+    def test_reports_and_faults_land_in_separate_tables(self):
+        faults = records(feature("A"))
+        reports = report_records(pin("r-1"), pin("r-2", GlobalID="r-2"))
+        self.poll(0, faults=faults, reports=reports)
+
+        conn = store.rebuild(self.db, self.deltas)
+        self.assertEqual(conn.execute("SELECT count(*) FROM faults").fetchone()[0], 1)
+        self.assertEqual(conn.execute("SELECT count(*) FROM reports").fetchone()[0], 2)
+        # A report must never be counted as an open fault: it would drag the
+        # headline backlog age down with a week-old record.
+        self.assertEqual(
+            conn.execute("SELECT count(*) FROM faults WHERE is_open = 1").fetchone()[0], 1
+        )
+        row = conn.execute("SELECT * FROM reports WHERE id = 'r-1'").fetchone()
+        self.assertEqual(row["postcode"], "RG30 4JT")
+        self.assertEqual(row["is_current"], 1)
+        self.assertIsNone(row["disappeared_at"])
+        conn.close()
+
+    def test_report_ageing_out_is_recorded_not_forgotten(self):
+        # Thames Water keeps only ~7 days of these, so the day one drops out is
+        # the only chance to record that it existed.
+        reports = report_records(pin("r-1"))
+        self.poll(0, reports=reports)
+        self.poll(1, reports={}, prev_reports=reports, known_reports={"r-1"})
+
+        conn = store.rebuild(self.db, self.deltas)
+        row = conn.execute("SELECT * FROM reports WHERE id = 'r-1'").fetchone()
+        self.assertEqual(row["is_current"], 0)
+        self.assertEqual(row["disappeared_at"][:10], "2026-01-02")
+        self.assertEqual(row["first_seen_at"][:10], "2026-01-01")
+        conn.close()
+
+    def test_reports_generate_no_fault_events(self):
+        self.poll(0, reports=report_records(pin("r-1")))
+        conn = store.rebuild(self.db, self.deltas)
+        self.assertEqual(conn.execute("SELECT count(*) FROM fault_events").fetchone()[0], 0)
+        conn.close()
+
+    def test_old_deltas_without_a_kind_still_replay_as_work_orders(self):
+        # The first delta ever written predates report collection and has no
+        # "k" field; replaying it must not break or change meaning.
+        legacy = store.Delta(observed_at="2026-01-01T00:00:00+00:00", source_counts={"waste": 1})
+        legacy.for_kind(sources.WORK_ORDER).appeared = records(feature("A"))
+        path = store.write_delta(self.deltas, legacy)
+        body = gzip.decompress(path.read_bytes()).decode()
+        self.assertNotIn('"k"', body)
+
+        conn = store.rebuild(self.db, self.deltas)
+        self.assertEqual(conn.execute("SELECT count(*) FROM faults").fetchone()[0], 1)
+        self.assertEqual(conn.execute("SELECT count(*) FROM reports").fetchone()[0], 0)
+        conn.close()
+
+    def test_report_ids_do_not_collide_with_fault_ids(self):
+        # Same id in both feeds must stay two distinct records.
+        faults = records(feature("SHARED"))
+        reports = report_records(pin("SHARED"))
+        self.poll(0, faults=faults, reports=reports)
+        conn = store.rebuild(self.db, self.deltas)
+        self.assertEqual(conn.execute("SELECT count(*) FROM faults WHERE id='SHARED'").fetchone()[0], 1)
+        self.assertEqual(conn.execute("SELECT count(*) FROM reports WHERE id='SHARED'").fetchone()[0], 1)
         conn.close()
 
 

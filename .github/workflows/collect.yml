@@ -1,0 +1,90 @@
+name: Collect faults
+
+# Takes a daily snapshot of Thames Water's public fault map, commits the change
+# log, and republishes the site.
+#
+# Note: GitHub only runs `schedule` triggers on the repository's default branch.
+# Until this workflow is merged there, use "Run workflow" to trigger it by hand.
+on:
+  schedule:
+    - cron: '15 6 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Write the delta even if the poll looks truncated'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Never let two collections race: they would both append a delta for the same day.
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    outputs:
+      summary: ${{ steps.collect.outputs.summary }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run tests
+        run: python -m unittest discover -s tests
+
+      - name: Poll the fault map
+        id: collect
+        run: |
+          set -o pipefail
+          python -m collector.collect ${{ inputs.force && '--force' || '' }} \
+            | tee /tmp/summary.json
+          echo "summary=$(cat /tmp/summary.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Build the site data
+        run: python -m collector.build_site
+
+      - name: Commit the change log
+        run: |
+          git config user.name  'thames-water-fault-tracker[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/deltas
+          if git diff --cached --quiet; then
+            echo 'Nothing changed since the last run.'
+            exit 0
+          fi
+          git commit -m "Snapshot $(date -u +%Y-%m-%d): $(jq -r \
+            '"\(.open) open (+\(.appeared) new, \(.resolved) cleared)"' /tmp/summary.json)"
+          # Another run may have pushed while we were collecting.
+          for attempt in 1 2 3 4; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $(( 2 ** attempt ))
+          done
+          exit 1
+
+      - name: Assemble the site
+        run: |
+          cp data/faults.db web/faults.db
+          gzip -9 -c data/faults.db > web/faults.db.gz
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    needs: collect
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

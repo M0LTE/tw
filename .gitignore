@@ -1,0 +1,11 @@
+# Derived artefacts — both are rebuilt from data/deltas/ on every run.
+data/faults.db
+data/faults.db-wal
+data/faults.db-shm
+web/data/
+web/faults.db
+web/faults.db.gz
+
+__pycache__/
+*.pyc
+.venv/

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thames Water fault tracker</title>
+<meta name="description" content="Independent daily tracking of every fault on Thames Water's public problem map — how many are open, how old they are, and how fast they get fixed.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%92%A7%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">💧</span>
+    <div>
+      <h1>Thames Water fault tracker</h1>
+      <p class="tagline">Every fault on their public map, counted daily.</p>
+    </div>
+  </div>
+  <div class="freshness">
+    <span id="freshness-value">Loading…</span>
+    <span class="freshness-label">last collected</span>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" data-view="overview" class="active">Overview</button>
+  <button role="tab" data-view="faults">Faults</button>
+  <button role="tab" data-view="map">Map</button>
+  <button role="tab" data-view="places">Places</button>
+  <button role="tab" data-view="about">About</button>
+</nav>
+
+<main>
+  <div id="loading" class="loading">Loading fault data…</div>
+  <div id="error" class="error" hidden></div>
+
+  <!-- ── Overview ─────────────────────────────────────────────── -->
+  <section id="view-overview" class="view" hidden>
+    <div class="kpis" id="kpis"></div>
+
+    <section class="card">
+      <header>
+        <h2>The backlog</h2>
+        <p>Open faults on the map each day, split by network. Flat or rising means faults are arriving as fast as they are cleared.</p>
+      </header>
+      <div class="chart-host" id="chart-backlog"></div>
+      <div class="legend" id="legend-backlog"></div>
+    </section>
+
+    <section class="card">
+      <header>
+        <h2>Arriving vs clearing</h2>
+        <p>New faults appearing each day against faults dropping off the map. The day tracking
+           began is excluded, since everything appears at once on that day.</p>
+      </header>
+      <div class="chart-host" id="chart-flow"></div>
+      <div class="legend">
+        <span><span class="swatch" style="background:var(--c-raised)"></span>New</span>
+        <span><span class="swatch" style="background:var(--c-resolved)"></span>Cleared</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <header>
+        <h2>How long have they been open?</h2>
+        <p>Age of currently open faults, measured from the date Thames Water raised the work order.</p>
+      </header>
+      <div class="chart-host" id="chart-age"></div>
+    </section>
+
+    <div class="grid-2">
+      <section class="card">
+        <header><h2>Where in the process</h2></header>
+        <div class="chart-host" id="chart-status"></div>
+      </section>
+      <section class="card">
+        <header><h2>Type of problem</h2></header>
+        <div class="chart-host" id="chart-journey"></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <header>
+        <h2>Longest-running open faults</h2>
+        <p>The oldest work orders Thames Water is still showing as unresolved.</p>
+      </header>
+      <div class="table-wrap"><table id="table-oldest"></table></div>
+    </section>
+  </section>
+
+  <!-- ── Faults ───────────────────────────────────────────────── -->
+  <section id="view-faults" class="view" hidden>
+    <div class="filters">
+      <input type="search" id="f-search" placeholder="Search street, postcode, town, work order…" autocomplete="off">
+      <select id="f-source"></select>
+      <select id="f-status"></select>
+      <select id="f-journey"></select>
+      <select id="f-age">
+        <option value="">Any age</option>
+        <option value="7">Over 1 week</option>
+        <option value="30">Over 1 month</option>
+        <option value="90">Over 3 months</option>
+        <option value="365">Over 1 year</option>
+        <option value="730">Over 2 years</option>
+      </select>
+      <button id="f-reset" class="ghost">Reset</button>
+      <span class="result-count" id="f-count"></span>
+      <button id="f-export" class="ghost">Download CSV</button>
+    </div>
+    <div class="table-wrap"><table id="table-faults"></table></div>
+    <div class="pager" id="pager"></div>
+  </section>
+
+  <!-- ── Map ──────────────────────────────────────────────────── -->
+  <section id="view-map" class="view" hidden>
+    <div class="map-legend">
+      <strong>Age</strong>
+      <span><i style="background:var(--age-0)"></i> &lt; 1 week</span>
+      <span><i style="background:var(--age-1)"></i> &lt; 1 month</span>
+      <span><i style="background:var(--age-2)"></i> &lt; 3 months</span>
+      <span><i style="background:var(--age-3)"></i> &lt; 1 year</span>
+      <span><i style="background:var(--age-4)"></i> 1 year +</span>
+      <span class="map-note" id="map-note"></span>
+    </div>
+    <div id="map"></div>
+  </section>
+
+  <!-- ── Places ───────────────────────────────────────────────── -->
+  <section id="view-places" class="view" hidden>
+    <section class="card">
+      <header>
+        <h2>Open faults by town</h2>
+        <p>Towns with at least 20 open faults, ranked. Median age shows where problems linger, not just where there are lots of them.</p>
+      </header>
+      <div class="table-wrap"><table id="table-places"></table></div>
+    </section>
+  </section>
+
+  <!-- ── About ────────────────────────────────────────────────── -->
+  <section id="view-about" class="view" hidden>
+    <section class="card prose">
+      <h2>What this is</h2>
+      <p>
+        Thames Water publishes a
+        <a href="https://www.thameswater.co.uk/help/report-a-problem#/view-problems-map" target="_blank" rel="noopener">map of current problems</a>
+        — leaks, blockages, flooding, pollution — but it only ever shows <em>now</em>. A fault that has
+        been open for two years looks exactly like one raised this morning, and once a pin disappears
+        there is no record it was ever there.
+      </p>
+      <p>
+        This site takes a snapshot of that map every day and keeps the history. That makes it possible
+        to ask the questions the map cannot answer: is the backlog growing? How long does a leak
+        actually take to fix? Which towns wait longest?
+      </p>
+
+      <h2>Where the data comes from</h2>
+      <p>
+        The map is an ArcGIS application. Its two public feature layers —
+        <code>CleanWaterOpenWorkOrder</code> and <code>WasteWaterOpenWorkOrder</code> — are read
+        directly, unchanged. Nothing here is estimated or modelled: every number is a count of
+        Thames Water's own published records.
+      </p>
+
+      <h2>How to read it</h2>
+      <ul>
+        <li><strong>Age</strong> is measured from <code>WorkOrderRaisedDate</code>, Thames Water's own timestamp for when the work order was created.</li>
+        <li><strong>Cleared</strong> means a fault stopped appearing in the feed. That usually means it was fixed, but the feed does not say so explicitly — a work order can also be merged, cancelled or reclassified.</li>
+        <li><strong>Time to fix</strong> counts from the raised date to the day the fault left the map. Faults already open on the day tracking began are included, so this figure is if anything generous.</li>
+        <li>Faults sometimes reappear after dropping out for a day. Those are counted once and flagged, not double-counted.</li>
+      </ul>
+
+      <h2>Check the numbers yourself</h2>
+      <p>
+        Every daily snapshot is committed to the repository as a compressed change log, and the
+        SQLite database is rebuilt from those files on every run — so any figure on this page can be
+        reproduced from the raw record.
+      </p>
+      <p class="about-links">
+        <a id="link-repo" href="https://github.com/M0LTE/tw" target="_blank" rel="noopener">Source and data on GitHub</a>
+        <a id="link-db" href="faults.db">Download the SQLite database</a>
+      </p>
+      <p class="disclaimer">
+        Not affiliated with or endorsed by Thames Water Utilities Ltd.
+      </p>
+    </section>
+  </section>
+</main>
+
+<!-- Fault detail -->
+<dialog id="detail">
+  <button class="dialog-close" aria-label="Close">&times;</button>
+  <div id="detail-body"></div>
+</dialog>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

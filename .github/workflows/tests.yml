@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+    branches-ignore: []
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Rebuild the database from the change log
+        run: python -m collector.collect --rebuild-only
+
+      - name: Build the site data
+        run: python -m collector.build_site
+
+      - name: Check the site data is well formed
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          for name in ('summary.json', 'open.json'):
+              data = json.loads(pathlib.Path('web/data', name).read_text())
+              print(f'{name}: ok')
+          summary = json.loads(pathlib.Path('web/data/summary.json').read_text())
+          open_ = json.loads(pathlib.Path('web/data/open.json').read_text())
+          assert summary['totals']['open'] == len(open_['cols']['id']), 'open count mismatch'
+          assert summary['totals']['open'] > 0, 'no open faults'
+          print(f"{summary['totals']['open']} open faults")
+          PY

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from zoneinfo import ZoneInfo
 from typing import Any
 
 # Fields we persist, in the order they appear in the ``faults`` table.
@@ -71,12 +72,22 @@ STATUS_RANK = {name: i for i, name in enumerate(STATUS_ORDER)}
 
 _OUTCODE = re.compile(r"^\s*([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\s*$", re.I)
 
+UK = ZoneInfo("Europe/London")
+
 MIN_PLAUSIBLE_MS = 946_684_800_000    # 2000-01-01
 MAX_PLAUSIBLE_MS = 4_102_444_800_000  # 2100-01-01
 
 
-def epoch_ms_to_iso(value: Any) -> str | None:
-    """ArcGIS dates are epoch milliseconds (UTC). Store them as ISO 8601."""
+def epoch_ms_to_iso(value: Any, local: bool = False) -> str | None:
+    """An ArcGIS epoch-millisecond field, as an ISO 8601 UTC string.
+
+    ``local=True`` for the Salesforce-sourced business fields on the work order
+    layers. Those are published as UK local time carrying a UTC epoch label, so
+    decoding them as UTC puts them an hour ahead during British Summer Time.
+    Comparing them against ``created_date`` (ArcGIS editor tracking, genuinely
+    UTC) shows exactly +3600s across every BST month and ~0 in GMT. The layer's
+    own editor-tracking fields, and the public reports layer, are already UTC.
+    """
     if value in (None, ""):
         return None
     try:
@@ -88,7 +99,21 @@ def epoch_ms_to_iso(value: Any) -> str | None:
     # anything outside 2000-2100 is treated as missing.
     if not MIN_PLAUSIBLE_MS <= ms <= MAX_PLAUSIBLE_MS:
         return None
-    return dt.datetime.fromtimestamp(ms / 1000, dt.timezone.utc).isoformat(timespec="seconds")
+    moment = dt.datetime.fromtimestamp(ms / 1000, dt.timezone.utc)
+    if local:
+        moment = local_wall_clock_to_utc(moment)
+    return moment.isoformat(timespec="seconds")
+
+
+def local_wall_clock_to_utc(moment: dt.datetime) -> dt.datetime:
+    """Reinterpret a UTC-labelled instant as UK wall-clock time.
+
+    The digits are right and the offset is wrong, so drop the tzinfo, attach
+    Europe/London, and convert. Ambiguous times in the autumn overlap resolve to
+    the first (BST) reading, matching what a clock would have read.
+    """
+    naive = moment.replace(tzinfo=None)
+    return naive.replace(tzinfo=UK).astimezone(dt.timezone.utc)
 
 
 def _text(value: Any) -> str | None:
@@ -154,10 +179,10 @@ def normalise(feature: dict, source_key: str) -> tuple[str, dict[str, Any]] | No
         "lat": _num(geometry.get("y")),
         "easting": _num(attrs.get("OpenWorkOrderEasting")),
         "northing": _num(attrs.get("OpenWorkOrderNorthing")),
-        "raised_at": epoch_ms_to_iso(attrs.get("WorkOrderRaisedDate")),
-        "closure_at": epoch_ms_to_iso(attrs.get("WorkOrderClosureDate")),
-        "repair_complete_at": epoch_ms_to_iso(attrs.get("WORepairCompleteDateTime")),
-        "last_modified_at": epoch_ms_to_iso(attrs.get("LastModifiedDate")),
+        "raised_at": epoch_ms_to_iso(attrs.get("WorkOrderRaisedDate"), local=True),
+        "closure_at": epoch_ms_to_iso(attrs.get("WorkOrderClosureDate"), local=True),
+        "repair_complete_at": epoch_ms_to_iso(attrs.get("WORepairCompleteDateTime"), local=True),
+        "last_modified_at": epoch_ms_to_iso(attrs.get("LastModifiedDate"), local=True),
         "open_line_items": _int(attrs.get("OpenWorkOrderLineItemCount")),
         "closed_line_items": _int(attrs.get("ClosedWorkOrderLineItemCount")),
         "remain_on_map_hrs": _int(attrs.get("RemainOnMapInHrs")),

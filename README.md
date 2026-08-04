@@ -172,6 +172,13 @@ These matter if you are going to quote the numbers at anyone.
   Override with `--force` when a drop is genuine.
 - **History starts the day collection starts.** Ages come from Thames Water's raised dates
   and so reach back to 2023, but backlog and flow trends only begin from the first snapshot.
+- **Work order timestamps are published as UK local time with a UTC label.** We convert them
+  on ingest; deltas written before this was spotted are corrected on replay. The public
+  reports layer uses ArcGIS editor-tracking fields, which are already UTC.
+- **Thames Water's map labels every public report "Leak"**, whatever was reported. The feed
+  carries no per-report problem type — `ProblemType` is `1` on every record.
+- **The reference shown on their map is the case number, not the work order number.** Both
+  are searchable here.
 - **A public report leaving the map does not mean it became a work order.** The two feeds
   share no key, so the conversion rate cannot be read off directly — only inferred from
   location and timing. Treat any such figure as an estimate.

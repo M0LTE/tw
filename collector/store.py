@@ -15,6 +15,7 @@ check our numbers by replaying the same files.
 
 from __future__ import annotations
 
+import datetime as dt
 import gzip
 import json
 import logging
@@ -28,7 +29,15 @@ from . import model, sources
 log = logging.getLogger(__name__)
 
 DELTA_SUFFIX = ".ndjson.gz"
-FORMAT_VERSION = 1
+
+# 1: work order timestamps decoded as UTC, which put them an hour ahead during
+#    British Summer Time (the feed publishes UK local time with a UTC label).
+# 2: those fields corrected on ingest. Version 1 deltas are corrected on replay
+#    rather than rewritten, so the committed log stays append-only.
+FORMAT_VERSION = 2
+
+# Salesforce business fields on the work order layers, all affected by the v1 bug.
+V1_LOCAL_TIME_FIELDS = ("raised_at", "closure_at", "repair_complete_at", "last_modified_at")
 
 
 # --------------------------------------------------------------------------- #
@@ -136,12 +145,34 @@ def delta_files(root: Path) -> list[Path]:
     return sorted(root.glob(f"*{DELTA_SUFFIX}"))
 
 
+def _migrate(entry: dict, version: int) -> dict:
+    """Bring an older delta entry up to the current format."""
+    if version >= FORMAT_VERSION:
+        return entry
+    fields = entry.get("f")
+    if version < 2 and fields and entry.get("k", DEFAULT_KIND) == sources.WORK_ORDER:
+        for key in V1_LOCAL_TIME_FIELDS:
+            if fields.get(key):
+                fields[key] = model.local_wall_clock_to_utc(
+                    dt.datetime.fromisoformat(fields[key])
+                ).isoformat(timespec="seconds")
+    return entry
+
+
 def read_delta(path: Path) -> Iterator[dict]:
+    """Entries from one delta file, migrated to the current format."""
+    version = FORMAT_VERSION
     with gzip.open(path, "rt", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
-            if line:
-                yield json.loads(line)
+            if not line:
+                continue
+            entry = json.loads(line)
+            if entry.get("op") == "meta":
+                version = int(entry.get("v", 1))
+                yield entry
+            else:
+                yield _migrate(entry, version)
 
 
 # --------------------------------------------------------------------------- #

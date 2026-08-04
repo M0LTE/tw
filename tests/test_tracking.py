@@ -93,6 +93,26 @@ class NormalisationTests(unittest.TestCase):
             _, record = model.normalise(feature("WO1", WorkOrderRaisedDate=junk), "waste")
             self.assertIsNone(record["raised_at"], junk)
 
+    def test_salesforce_dates_are_uk_local_not_utc(self):
+        # The feed publishes WorkOrderRaisedDate as UK wall-clock time carrying a
+        # UTC epoch label. Compared against created_date (ArcGIS editor tracking,
+        # genuinely UTC) the gap is exactly +3600s in every BST month and ~0 in
+        # GMT, so these have to be read as Europe/London.
+        summer = int(dt.datetime(2026, 8, 1, 13, 21, 49, tzinfo=dt.timezone.utc).timestamp() * 1000)
+        _, record = model.normalise(feature("WO1", WorkOrderRaisedDate=summer), "waste")
+        self.assertEqual(record["raised_at"], "2026-08-01T12:21:49+00:00", "BST is UTC+1")
+
+        winter = int(dt.datetime(2026, 1, 15, 13, 21, 49, tzinfo=dt.timezone.utc).timestamp() * 1000)
+        _, record = model.normalise(feature("WO1", WorkOrderRaisedDate=winter), "waste")
+        self.assertEqual(record["raised_at"], "2026-01-15T13:21:49+00:00", "GMT is UTC")
+
+    def test_report_dates_stay_utc(self):
+        # The pending-pins layer uses ArcGIS editor-tracking fields, which are
+        # already UTC and must not be shifted.
+        stamp = int(dt.datetime(2026, 7, 31, 16, 33, 24, tzinfo=dt.timezone.utc).timestamp() * 1000)
+        _, record = model.normalise_report(pin("r-1", CreationDate=stamp), "reported")
+        self.assertEqual(record["reported_at"], "2026-07-31T16:33:24+00:00")
+
     def test_features_without_an_id_are_rejected(self):
         self.assertIsNone(model.normalise(feature("WO1", WorkOrderID=None), "waste"))
         self.assertIsNone(model.normalise(feature("WO1", WorkOrderID="  "), "waste"))
@@ -369,6 +389,44 @@ class ReportTrackingTests(unittest.TestCase):
         conn = store.rebuild(self.db, self.deltas)
         self.assertEqual(conn.execute("SELECT count(*) FROM faults").fetchone()[0], 1)
         self.assertEqual(conn.execute("SELECT count(*) FROM reports").fetchone()[0], 0)
+        conn.close()
+
+    def test_version_1_deltas_get_their_timestamps_corrected_on_replay(self):
+        # Deltas written before the timezone fix hold BST timestamps an hour
+        # ahead. They are corrected on read rather than rewritten, so the
+        # committed log stays append-only and old numbers still reconcile.
+        legacy = store.Delta(observed_at="2026-08-04T00:00:00+00:00", source_counts={"waste": 1})
+        legacy.for_kind(sources.WORK_ORDER).appeared = {
+            "A": {**records(feature("A"))["A"], "raised_at": "2026-08-01T13:21:49+00:00"}
+        }
+        path = store.write_delta(self.deltas, legacy)
+
+        # Rewrite the meta line to claim v1, as the real early deltas do.
+        lines = gzip.decompress(path.read_bytes()).decode().splitlines()
+        lines[0] = json.dumps({**json.loads(lines[0]), "v": 1}, sort_keys=True)
+        with path.open("wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as fh:
+            fh.write(("\n".join(lines) + "\n").encode())
+
+        conn = store.rebuild(self.db, self.deltas)
+        self.assertEqual(
+            conn.execute("SELECT raised_at FROM faults WHERE id='A'").fetchone()[0],
+            "2026-08-01T12:21:49+00:00",
+        )
+        conn.close()
+
+    def test_current_deltas_are_not_shifted_again(self):
+        # The same value written at the current version must survive replay
+        # untouched, or every rebuild would walk timestamps backwards.
+        delta = store.Delta(observed_at="2026-08-04T00:00:00+00:00", source_counts={"waste": 1})
+        delta.for_kind(sources.WORK_ORDER).appeared = {
+            "A": {**records(feature("A"))["A"], "raised_at": "2026-08-01T12:21:49+00:00"}
+        }
+        store.write_delta(self.deltas, delta)
+        conn = store.rebuild(self.db, self.deltas)
+        self.assertEqual(
+            conn.execute("SELECT raised_at FROM faults WHERE id='A'").fetchone()[0],
+            "2026-08-01T12:21:49+00:00",
+        )
         conn.close()
 
     def test_report_ids_do_not_collide_with_fault_ids(self):

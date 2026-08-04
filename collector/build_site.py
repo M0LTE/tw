@@ -79,18 +79,19 @@ def open_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
     """Every currently-open fault, columnar and dictionary-encoded."""
     status, journey, city, source, work_type, priority = (Dictionary() for _ in range(6))
     cols: dict[str, list] = {k: [] for k in
-                             ("id", "wo", "s", "j", "w", "p", "c", "n", "pc", "st", "r", "f", "lon", "lat")}
+                             ("id", "wo", "cn", "s", "j", "w", "p", "c", "n", "pc", "st", "r", "f", "lon", "lat")}
 
     # Oldest first, nulls last: the UI slices the head of this for its
     # "longest-running faults" table, so the order is part of the contract.
     rows = conn.execute(
-        "SELECT id, work_order_number, status, journey_type, mid_level_work_type, priority_flag,"
-        "       city, source, postcode, street, raised_at, first_seen_at, lon, lat "
+        "SELECT id, work_order_number, case_number, status, journey_type, mid_level_work_type,"
+        "       priority_flag, city, source, postcode, street, raised_at, first_seen_at, lon, lat "
         "FROM faults WHERE is_open = 1 ORDER BY raised_at IS NULL, raised_at"
     )
     for row in rows:
         cols["id"].append(row["id"])
         cols["wo"].append(row["work_order_number"])
+        cols["cn"].append(row["case_number"])
         cols["s"].append(status(row["status"]))
         cols["j"].append(journey(row["journey_type"]))
         cols["w"].append(work_type(row["mid_level_work_type"]))

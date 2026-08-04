@@ -104,6 +104,7 @@ function expand(open) {
       i,
       id: cols.id[i],
       workOrder: cols.wo[i],
+      caseNumber: cols.cn ? cols.cn[i] : null,
       status: dict.status[cols.s[i]],
       journey: dict.journey[cols.j[i]],
       workType: dict.work_type[cols.w[i]],
@@ -118,7 +119,10 @@ function expand(open) {
       lon: cols.lon[i],
       lat: cols.lat[i],
     };
-    out[i].haystack = [out[i].street, out[i].postcode, out[i].city, out[i].workOrder, out[i].journey]
+    // Case number included because that is the reference Thames Water's own
+    // map shows, so it is what someone will paste in here.
+    out[i].haystack = [out[i].street, out[i].postcode, out[i].city, out[i].workOrder,
+                       out[i].caseNumber, out[i].journey]
       .filter(Boolean).join(' ').toLowerCase();
   }
   // Statuses come from the dictionary in first-seen order; sort by the real
@@ -325,6 +329,7 @@ const COLUMNS = [
   { key: 'status', label: 'Status', render: (x) => escape(x.status || '') },
   { key: 'source', label: 'Network', render: (x) => `<span class="pill ${x.source}">${x.source === 'clean' ? 'Clean' : 'Waste'}</span>` },
   { key: 'workOrder', label: 'Work order', cls: 'mono', render: (x) => escape(x.workOrder || '') },
+  { key: 'caseNumber', label: 'Case', cls: 'mono', render: (x) => escape(x.caseNumber || '') },
 ];
 
 function renderFaults() {
@@ -400,9 +405,10 @@ function downloadCSV(rows, filename) {
 }
 
 function exportCSV() {
-  const header = ['work_order', 'raised', 'age_days', 'status', 'problem', 'work_type', 'street', 'postcode', 'town', 'network', 'lat', 'lon'];
+  const header = ['work_order', 'case_number', 'raised', 'age_days', 'status', 'problem', 'work_type', 'street', 'postcode', 'town', 'network', 'lat', 'lon'];
   const rows = state.filtered.map((x) => [
-    x.workOrder, x.raised === null ? '' : dayToDate(x.raised).toISOString().slice(0, 10), x.age ?? '',
+    x.workOrder, x.caseNumber,
+    x.raised === null ? '' : dayToDate(x.raised).toISOString().slice(0, 10), x.age ?? '',
     x.status, x.journey, x.workType, x.street, x.postcode, x.city, x.source, x.lat, x.lon,
   ]);
   downloadCSV([header, ...rows], `thames-water-faults-${new Date().toISOString().slice(0, 10)}.csv`);
@@ -416,6 +422,7 @@ function openDetail(fault) {
 
   const rows = [
     ['Work order', fault.workOrder],
+    ['Case number', fault.caseNumber],
     ['Network', fault.source === 'clean' ? 'Clean water' : 'Waste water'],
     ['Problem', fault.journey],
     ['Work type', fault.workType],
@@ -493,7 +500,8 @@ function applyReportFilters() {
 function renderReports() {
   const table = $('#table-reports');
   table.innerHTML =
-    '<thead><tr><th>Reported</th><th>Age</th><th>Where</th><th>Town</th><th>On the map now?</th></tr></thead>';
+    '<thead><tr><th>Reported</th><th>Problem</th><th>Age</th><th>Where</th><th>Town</th>' +
+    '<th>On the map now?</th></tr></thead>';
   const body = document.createElement('tbody');
   const start = reportState.page * PAGE_SIZE;
 
@@ -501,6 +509,7 @@ function renderReports() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${formatDate(r.reported)}</td>
+      <td title="Thames Water labels every pin in this layer &quot;Leak&quot;, whatever was reported">Leak</td>
       <td class="num age age-${ageClass(r.age)}">${formatAge(r.age)}</td>
       <td class="wrap">${locationCell(r, r.town)}</td>
       <td>${escape(titleCase(r.town || ''))}</td>
@@ -557,6 +566,8 @@ function openReportDetail(r) {
       ? escape(titleCase(r.town || '')) + ' ' + escape(r.postcode || '')
       : 'No address published'}</p>
     <dl class="kv">${rows.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>
+    <p class="footnote" style="margin-top:0">Thames Water's map labels every pin in this layer
+    &ldquo;Leak&rdquo;, whatever was actually reported — the feed carries no per-report problem type.</p>
     <h2 style="font-size:14px;margin:0 0 10px">What we have seen</h2>
     <ul class="timeline">
       <li><strong>Reported to Thames Water</strong><div class="when">${escape(formatDate(r.reported))}</div></li>
@@ -573,10 +584,10 @@ function openReportDetail(r) {
 }
 
 function exportReportsCSV() {
-  const header = ['reported', 'age_days', 'street', 'postcode', 'town', 'still_on_map', 'left_map', 'lat', 'lon'];
+  const header = ['reported', 'problem', 'age_days', 'street', 'postcode', 'town', 'still_on_map', 'left_map', 'lat', 'lon'];
   const rows = reportState.filtered.map((r) => [
     r.reported === null ? '' : dayToDate(r.reported).toISOString().slice(0, 10),
-    r.age ?? '', r.street, r.postcode, r.town,
+    'Leak', r.age ?? '', r.street, r.postcode, r.town,
     r.gone === null ? 'yes' : 'no',
     r.gone === null ? '' : dayToDate(r.gone).toISOString().slice(0, 10),
     r.lat, r.lon,

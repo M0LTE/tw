@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import gzip
 import json
+import sqlite3
 import sys
 import unittest
 from pathlib import Path
@@ -379,6 +380,95 @@ class ReportTrackingTests(unittest.TestCase):
         self.assertEqual(conn.execute("SELECT count(*) FROM faults WHERE id='SHARED'").fetchone()[0], 1)
         self.assertEqual(conn.execute("SELECT count(*) FROM reports WHERE id='SHARED'").fetchone()[0], 1)
         conn.close()
+
+
+class AnalysisTests(unittest.TestCase):
+    """The derived figures published on the site (issues #2 and #3)."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = Path(self.tmp.name) / "faults.db"
+        deltas = Path(self.tmp.name) / "deltas"
+
+        # Two authorities, deliberately different sizes: a raw count ranks the
+        # big one worse, a rate ranks the small one worse.
+        big = [feature(f"B{i:04d}", Postcode="TW10 6LX", MidLevelWorkType="Sewer blockage")
+               for i in range(60)]
+        small = [feature(f"S{i:04d}", Postcode="RG30 4JT",
+                         JourneyType="Flooding",
+                         MidLevelWorkType="Sewer flooding - external investigation")
+                 for i in range(40)]
+        delta = store.Delta(observed_at="2026-01-01T00:00:00+00:00", source_counts={"waste": 100})
+        delta.for_kind(sources.WORK_ORDER).appeared = records(*big, *small)
+        store.write_delta(deltas, delta)
+        store.rebuild(self.db, deltas).close()
+
+        reference = Path(self.tmp.name) / "reference"
+        reference.mkdir()
+        import gzip as gz
+
+        with gz.open(reference / "postcode_la.json.gz", "wt") as fh:
+            json.dump({"TW10 6LX": "E09000027", "RG30 4JT": "E06000038"}, fh)
+        (reference / "la_households.json").write_text(json.dumps({
+            "E09000027": {"name": "Richmond upon Thames", "households": 100_000},
+            "E06000038": {"name": "Reading", "households": 10_000},
+        }))
+
+        from collector import build_site
+        self.build_site = build_site
+        self._patched = (build_site.POSTCODE_LA, build_site.LA_HOUSEHOLDS, build_site.MIN_FAULTS_PER_AREA)
+        build_site.POSTCODE_LA = reference / "postcode_la.json.gz"
+        build_site.LA_HOUSEHOLDS = reference / "la_households.json"
+        build_site.MIN_FAULTS_PER_AREA = 10
+        self.addCleanup(self.restore)
+
+    def restore(self):
+        (self.build_site.POSTCODE_LA, self.build_site.LA_HOUSEHOLDS,
+         self.build_site.MIN_FAULTS_PER_AREA) = self._patched
+
+    def connect(self):
+        conn = sqlite3.connect(self.db)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def test_areas_rank_by_rate_not_raw_count(self):
+        conn = self.connect()
+        result = self.build_site.areas(conn, dt.date(2026, 3, 1))
+        conn.close()
+        self.assertTrue(result["available"])
+        rows = {r["name"]: r for r in result["rows"]}
+        # Richmond has more faults, Reading has far more per household.
+        self.assertGreater(rows["Richmond upon Thames"]["n"], rows["Reading"]["n"])
+        self.assertEqual(rows["Richmond upon Thames"]["per_10k"], 6.0)
+        self.assertEqual(rows["Reading"]["per_10k"], 40.0)
+        self.assertEqual(result["rows"][0]["name"], "Reading", "should rank by rate")
+
+    def test_areas_report_coverage_and_drop_unplaceable_postcodes(self):
+        conn = self.connect()
+        # B0000-B0009: ten of the hundred faults get an unplaceable postcode.
+        conn.execute("UPDATE faults SET postcode = 'ZZ99 9ZZ' WHERE id LIKE 'B000%'")
+        conn.commit()
+        result = self.build_site.areas(conn, dt.date(2026, 3, 1))
+        conn.close()
+        self.assertEqual(result["unplaced"], 10)
+        self.assertAlmostEqual(result["coverage"], 90.0, places=1)
+
+    def test_areas_degrade_gracefully_without_reference_data(self):
+        self.build_site.POSTCODE_LA = Path(self.tmp.name) / "missing.json.gz"
+        conn = self.connect()
+        result = self.build_site.areas(conn, dt.date(2026, 3, 1))
+        conn.close()
+        self.assertFalse(result["available"])
+        self.assertEqual(result["rows"], [])
+
+    def test_external_flooding_counts_only_that_work_type(self):
+        conn = self.connect()
+        result = self.build_site.external_sewer_flooding(conn, dt.date(2026, 3, 1))
+        conn.close()
+        self.assertEqual(result["open"], 40, "must not include the 60 blockages")
+        self.assertEqual(result["work_type"], "Sewer flooding - external investigation")
+        self.assertEqual(result["by_status"], {"Reported": 40})
 
 
 class BuildSiteTests(unittest.TestCase):

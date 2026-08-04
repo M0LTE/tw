@@ -107,6 +107,19 @@ only ~7 days, `disappeared_at` is the record that a report existed at all.
 
 See [`collector/schema.sql`](collector/schema.sql).
 
+## Reference data
+
+`data/reference/` holds two committed lookups so `build_site` never needs the network and
+every published rate stays reproducible from the repository:
+
+| File | Contents | Source |
+|---|---|---|
+| `postcode_la.json.gz` | postcode → local authority code | [postcodes.io](https://postcodes.io), OGL |
+| `la_households.json` | local authority → household count | ONS Census 2021 table TS041 (NOMIS `NM_2059_1`) |
+
+Rebuild or top up with `python -m collector.reference`. It only looks up postcodes it has not
+seen, so a routine run costs a handful of requests.
+
 ## Running it locally
 
 No dependencies beyond Python 3.11+ — the collector is stdlib only.
@@ -162,6 +175,13 @@ These matter if you are going to quote the numbers at anyone.
 - **A public report leaving the map does not mean it became a work order.** The two feeds
   share no key, so the conversion rate cannot be read off directly — only inferred from
   location and timing. Treat any such figure as an estimate.
+- **A low fault rate for a local authority is not proof of good performance.** Thames Water
+  supplies only part of some authorities, so faults are counted for their area while
+  households are counted for the whole of it. Normalising by households corrects for size;
+  it does not adjust for network age, pipe material or ground conditions.
+- **External sewer flooding counts are work orders, not compensation cases.** They record
+  that Thames Water raised an investigation, not that a qualifying flooding incident
+  occurred or that any payment is due.
 
 ## Licence and attribution
 

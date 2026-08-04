@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import collections
 import datetime as dt
+import gzip
 import json
 import logging
 import sqlite3
@@ -28,6 +29,9 @@ log = logging.getLogger("build_site")
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / "data" / "faults.db"
 OUT = ROOT / "web" / "data"
+REFERENCE = ROOT / "data" / "reference"
+POSTCODE_LA = REFERENCE / "postcode_la.json.gz"
+LA_HOUSEHOLDS = REFERENCE / "la_households.json"
 
 EPOCH = dt.date(2020, 1, 1)
 # How much resolution history the "how fast do they fix things" panels use.
@@ -302,6 +306,117 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
     }
 
 
+# Every Flooding-journey work order carries this work type. It is the category
+# Thames Water told Ofwat should not attract an automatic GSS payment.
+EXTERNAL_SEWER_FLOODING = "Sewer flooding - external investigation"
+
+# Below this many open faults, a local authority's rate is too noisy to rank,
+# and it is likely one Thames Water only partly supplies.
+MIN_FAULTS_PER_AREA = 30
+
+
+def external_sewer_flooding(conn: sqlite3.Connection, today: dt.date) -> dict:
+    """The external sewer flooding backlog, for the panel about their GSS position."""
+    rows = conn.execute(
+        "SELECT status, raised_at FROM faults WHERE is_open = 1 AND mid_level_work_type = ?",
+        (EXTERNAL_SEWER_FLOODING,),
+    ).fetchall()
+
+    ages: list[float] = []
+    by_status: collections.Counter[str] = collections.Counter()
+    for row in rows:
+        by_status[row["status"] or "Unknown"] += 1
+        raised = day_index(row["raised_at"])
+        if raised is not None:
+            age = (today - EPOCH).days - raised
+            if age >= 0:
+                ages.append(float(age))
+
+    return {
+        "work_type": EXTERNAL_SEWER_FLOODING,
+        "open": len(rows),
+        "age": _percentiles(ages),
+        "over_year": sum(1 for a in ages if a > 365),
+        "over_90d": sum(1 for a in ages if a > 90),
+        "by_status": dict(by_status.most_common()),
+    }
+
+
+def load_reference() -> tuple[dict[str, str], dict[str, dict]]:
+    """postcode -> local authority code, and local authority -> household count.
+
+    Both are committed under data/reference/ by collector/reference.py, so this
+    stays offline and the published rates are reproducible from the repository.
+    """
+    postcode_la: dict[str, str] = {}
+    if POSTCODE_LA.exists():
+        with gzip.open(POSTCODE_LA, "rt", encoding="utf-8") as fh:
+            postcode_la = json.load(fh)
+    households: dict[str, dict] = {}
+    if LA_HOUSEHOLDS.exists():
+        households = json.loads(LA_HOUSEHOLDS.read_text())
+    return postcode_la, households
+
+
+def areas(conn: sqlite3.Connection, today: dt.date) -> dict:
+    """Open faults by local authority, per 10,000 households.
+
+    Grouping by Thames Water's free-text `City` gave a table that mostly ranked
+    population. Local authorities are a real statistical geography with a
+    published household count, so the counts become comparable rates.
+    """
+    postcode_la, households = load_reference()
+    if not postcode_la or not households:
+        return {"available": False, "rows": [], "coverage": None}
+
+    buckets: dict[str, dict] = {}
+    placed = unplaced = 0
+    for row in conn.execute(
+        "SELECT postcode, raised_at FROM faults WHERE is_open = 1"
+    ):
+        code = postcode_la.get(row["postcode"] or "", "")
+        if not code or code not in households:
+            unplaced += 1
+            continue
+        placed += 1
+        entry = buckets.setdefault(code, {"ages": [], "n": 0, "over_year": 0})
+        entry["n"] += 1
+        raised = day_index(row["raised_at"])
+        if raised is not None:
+            age = (today - EPOCH).days - raised
+            if age >= 0:
+                entry["ages"].append(age)
+                if age > 365:
+                    entry["over_year"] += 1
+
+    rows = []
+    for code, entry in buckets.items():
+        if entry["n"] < MIN_FAULTS_PER_AREA:
+            continue
+        homes = households[code]["households"]
+        rows.append(
+            {
+                "code": code,
+                "name": households[code]["name"],
+                "n": entry["n"],
+                "households": homes,
+                "per_10k": round(entry["n"] / homes * 10_000, 2) if homes else None,
+                "median_age": round(statistics.median(entry["ages"]), 1) if entry["ages"] else None,
+                "over_year": entry["over_year"],
+            }
+        )
+    rows.sort(key=lambda r: -(r["per_10k"] or 0))
+
+    return {
+        "available": True,
+        "rows": rows,
+        "min_faults": MIN_FAULTS_PER_AREA,
+        "coverage": round(100 * placed / max(1, placed + unplaced), 1),
+        "unplaced": unplaced,
+        "source": "ONS Census 2021 table TS041; postcode to local authority via postcodes.io",
+    }
+
+
 def public_reports(conn: sqlite3.Connection, today: dt.date) -> dict:
     """Problems the public has reported that are not yet work orders.
 
@@ -374,6 +489,8 @@ def build(db_path: Path, out: Path) -> None:
 
     payload = summary(conn, today)
     payload["reports"] = report_summary(conn, today)
+    payload["areas"] = areas(conn, today)
+    payload["external_flooding"] = external_sewer_flooding(conn, today)
     _write(out / "summary.json", payload)
     _write(out / "open.json", open_faults(conn, today))
     _write(out / "reports.json", public_reports(conn, today))

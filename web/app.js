@@ -621,27 +621,102 @@ function renderMap() {
 
 // ── Places ──────────────────────────────────────────────────────
 
+// Ranked by faults per 10,000 households rather than raw count: a raw count
+// mostly ranks population, which tells you nothing about how Thames Water is
+// performing in one place versus another.
 function renderPlaces() {
+  const areas = state.summary.areas;
   const table = $('#table-places');
+
+  if (!areas || !areas.available) {
+    $('#places-blurb').textContent =
+      'Reference data for normalising by households is missing, so this table is unavailable.';
+    table.replaceChildren();
+    return;
+  }
+
+  $('#places-blurb').innerHTML =
+    `Ranked by open faults per 10,000 households, so the table is not simply a map of where ` +
+    `people live. Authorities with fewer than ${formatNumber(areas.min_faults)} open faults ` +
+    `are excluded. ${formatNumber(areas.coverage)}% of open faults have a postcode we could ` +
+    `place in a local authority.`;
+
   table.innerHTML =
-    '<thead><tr><th>Town</th><th>Open faults</th><th>Median age</th><th>Open over a year</th></tr></thead>';
+    '<thead><tr><th>Local authority</th><th>Per 10,000 homes</th><th>Open faults</th>' +
+    '<th>Households</th><th>Median age</th><th>Open over a year</th></tr></thead>';
   const body = document.createElement('tbody');
-  for (const row of state.summary.places) {
+  const worst = Math.max(...areas.rows.map((r) => r.per_10k || 0), 1);
+
+  for (const row of areas.rows) {
     const tr = document.createElement('tr');
+    // A bar in the cell makes the spread legible without a separate chart.
+    const pct = ((row.per_10k || 0) / worst) * 100;
     tr.innerHTML = `
-      <td>${escape(titleCase(row.place))}</td>
+      <td>${escape(row.name)}</td>
+      <td class="num rate"><span class="rate-bar" style="width:${pct.toFixed(1)}%"></span>
+        <span class="rate-value">${row.per_10k === null ? '—' : row.per_10k.toFixed(1)}</span></td>
       <td class="num">${formatNumber(row.n)}</td>
+      <td class="num">${formatNumber(row.households)}</td>
       <td class="num age age-${ageClass(row.median_age)}">${row.median_age === null ? '—' : formatNumber(row.median_age) + 'd'}</td>
       <td class="num">${formatNumber(row.over_year)}</td>`;
     tr.addEventListener('click', () => {
-      state.filters.search = row.place;
-      $('#f-search').value = row.place;
+      state.filters.search = row.name;
+      $('#f-search').value = row.name;
       applyFilters();
       show('faults');
     });
     body.append(tr);
   }
   table.append(body);
+
+  $('#places-footnote').innerHTML =
+    `Households from ${escape(areas.source)}. ` +
+    `<strong>A low rate does not necessarily mean good performance:</strong> Thames Water supplies ` +
+    `only part of some authorities, so faults are counted for their area while households are ` +
+    `counted for the whole of it. Normalising by households also does not adjust for network age, ` +
+    `pipe material or ground conditions, all of which plausibly drive real differences in fault rates.`;
+}
+
+// The GSS panel. Careful wording matters here: these are work orders about
+// external sewer flooding investigations, not adjudicated compensation cases.
+function renderFlooding() {
+  const f = state.summary.external_flooding;
+  if (!f || !f.open) {
+    $('#card-flooding').hidden = true;
+    return;
+  }
+  const statuses = Object.entries(f.by_status)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `<li><strong>${formatNumber(v)}</strong> ${escape(k)}</li>`)
+    .join('');
+
+  $('#flooding-body').innerHTML = `
+    <div class="stat-row">
+      <div><span class="stat-value">${formatNumber(f.open)}</span><span class="stat-label">open now</span></div>
+      <div><span class="stat-value">${formatNumber(f.age.p50)}d</span><span class="stat-label">median age</span></div>
+      <div><span class="stat-value">${formatNumber(f.over_90d)}</span><span class="stat-label">open over 3 months</span></div>
+      <div><span class="stat-value">${formatNumber(f.over_year)}</span><span class="stat-label">open over a year</span></div>
+      <div><span class="stat-value">${formatAge(f.age.max)}</span><span class="stat-label">oldest</span></div>
+    </div>
+
+    <ul class="inline-list">${statuses}</ul>
+
+    <blockquote>
+      <p>In the Consultation, Ofwat states, “the company must make an automatic GSS payment” when
+      referring to an external sewer flooding event. We believe that this is a mistake, that a
+      payment should not be made automatically, and that eligibility for this payment still
+      requires the customer to claim and demonstrate how they were affected.</p>
+      <cite>Thames Water, response to Ofwat's consultation on the Guaranteed Standards Scheme,
+      September 2025, page 3</cite>
+    </blockquote>
+
+    <p class="footnote">
+      These are work orders Thames Water has raised and coded
+      <code>${escape(f.work_type)}</code>. They are <strong>not</strong> confirmed
+      compensation-eligible flooding incidents, and the two are not interchangeable — an
+      investigation may find nothing, and eligibility is exactly what is in dispute. Nothing here
+      states or implies that any sum is owed.
+    </p>`;
 }
 
 // ── Routing ─────────────────────────────────────────────────────
@@ -744,6 +819,7 @@ async function main() {
 
     renderOverview();
     renderOldest();
+    renderFlooding();
     renderPlaces();
     renderReportsBlurb();
     applyFilters();

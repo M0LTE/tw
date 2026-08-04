@@ -1,0 +1,1310 @@
+{
+ "E06000001": {
+  "households": 40930,
+  "name": "Hartlepool"
+ },
+ "E06000002": {
+  "households": 60262,
+  "name": "Middlesbrough"
+ },
+ "E06000003": {
+  "households": 61636,
+  "name": "Redcar and Cleveland"
+ },
+ "E06000004": {
+  "households": 83757,
+  "name": "Stockton-on-Tees"
+ },
+ "E06000005": {
+  "households": 48918,
+  "name": "Darlington"
+ },
+ "E06000006": {
+  "households": 55951,
+  "name": "Halton"
+ },
+ "E06000007": {
+  "households": 90538,
+  "name": "Warrington"
+ },
+ "E06000008": {
+  "households": 58767,
+  "name": "Blackburn with Darwen"
+ },
+ "E06000009": {
+  "households": 64789,
+  "name": "Blackpool"
+ },
+ "E06000011": {
+  "households": 152066,
+  "name": "East Riding of Yorkshire"
+ },
+ "E06000012": {
+  "households": 69826,
+  "name": "North East Lincolnshire"
+ },
+ "E06000013": {
+  "households": 73173,
+  "name": "North Lincolnshire"
+ },
+ "E06000014": {
+  "households": 85459,
+  "name": "York"
+ },
+ "E06000015": {
+  "households": 105652,
+  "name": "Derby"
+ },
+ "E06000016": {
+  "households": 127387,
+  "name": "Leicester"
+ },
+ "E06000017": {
+  "households": 16694,
+  "name": "Rutland"
+ },
+ "E06000018": {
+  "households": 124745,
+  "name": "Nottingham"
+ },
+ "E06000020": {
+  "households": 76510,
+  "name": "Telford and Wrekin"
+ },
+ "E06000021": {
+  "households": 110399,
+  "name": "Stoke-on-Trent"
+ },
+ "E06000022": {
+  "households": 79250,
+  "name": "Bath and North East Somerset"
+ },
+ "E06000024": {
+  "households": 94648,
+  "name": "North Somerset"
+ },
+ "E06000025": {
+  "households": 118101,
+  "name": "South Gloucestershire"
+ },
+ "E06000026": {
+  "households": 114558,
+  "name": "Plymouth"
+ },
+ "E06000027": {
+  "households": 62992,
+  "name": "Torbay"
+ },
+ "E06000030": {
+  "households": 95862,
+  "name": "Swindon"
+ },
+ "E06000031": {
+  "households": 84533,
+  "name": "Peterborough"
+ },
+ "E06000032": {
+  "households": 78940,
+  "name": "Luton"
+ },
+ "E06000033": {
+  "households": 78344,
+  "name": "Southend-on-Sea"
+ },
+ "E06000034": {
+  "households": 66377,
+  "name": "Thurrock"
+ },
+ "E06000035": {
+  "households": 111458,
+  "name": "Medway"
+ },
+ "E06000036": {
+  "households": 50248,
+  "name": "Bracknell Forest"
+ },
+ "E06000037": {
+  "households": 66658,
+  "name": "West Berkshire"
+ },
+ "E06000038": {
+  "households": 67683,
+  "name": "Reading"
+ },
+ "E06000039": {
+  "households": 52423,
+  "name": "Slough"
+ },
+ "E06000040": {
+  "households": 60932,
+  "name": "Windsor and Maidenhead"
+ },
+ "E06000041": {
+  "households": 69164,
+  "name": "Wokingham"
+ },
+ "E06000042": {
+  "households": 113102,
+  "name": "Milton Keynes"
+ },
+ "E06000043": {
+  "households": 121402,
+  "name": "Brighton and Hove"
+ },
+ "E06000044": {
+  "households": 86155,
+  "name": "Portsmouth"
+ },
+ "E06000045": {
+  "households": 102291,
+  "name": "Southampton"
+ },
+ "E06000046": {
+  "households": 64775,
+  "name": "Isle of Wight"
+ },
+ "E06000047": {
+  "households": 234761,
+  "name": "County Durham"
+ },
+ "E06000049": {
+  "households": 174856,
+  "name": "Cheshire East"
+ },
+ "E06000050": {
+  "households": 155156,
+  "name": "Cheshire West and Chester"
+ },
+ "E06000051": {
+  "households": 139579,
+  "name": "Shropshire"
+ },
+ "E06000052": {
+  "households": 250535,
+  "name": "Cornwall"
+ },
+ "E06000053": {
+  "households": 942,
+  "name": "Isles of Scilly"
+ },
+ "E06000054": {
+  "households": 215081,
+  "name": "Wiltshire"
+ },
+ "E06000055": {
+  "households": 74950,
+  "name": "Bedford"
+ },
+ "E06000056": {
+  "households": 120755,
+  "name": "Central Bedfordshire"
+ },
+ "E06000057": {
+  "households": 146922,
+  "name": "Northumberland"
+ },
+ "E06000059": {
+  "households": 169261,
+  "name": "Dorset"
+ },
+ "E06000060": {
+  "households": 220328,
+  "name": "Buckinghamshire"
+ },
+ "E06000061": {
+  "households": 148918,
+  "name": "North Northamptonshire"
+ },
+ "E06000062": {
+  "households": 172641,
+  "name": "West Northamptonshire"
+ },
+ "E07000008": {
+  "households": 52472,
+  "name": "Cambridge"
+ },
+ "E07000009": {
+  "households": 37203,
+  "name": "East Cambridgeshire"
+ },
+ "E07000010": {
+  "households": 44083,
+  "name": "Fenland"
+ },
+ "E07000011": {
+  "households": 76880,
+  "name": "Huntingdonshire"
+ },
+ "E07000012": {
+  "households": 66996,
+  "name": "South Cambridgeshire"
+ },
+ "E07000026": {
+  "households": 43973,
+  "name": "Allerdale"
+ },
+ "E07000027": {
+  "households": 31259,
+  "name": "Barrow-in-Furness"
+ },
+ "E07000028": {
+  "households": 50663,
+  "name": "Carlisle"
+ },
+ "E07000029": {
+  "households": 30789,
+  "name": "Copeland"
+ },
+ "E07000030": {
+  "households": 24613,
+  "name": "Eden"
+ },
+ "E07000031": {
+  "households": 47657,
+  "name": "South Lakeland"
+ },
+ "E07000032": {
+  "households": 56277,
+  "name": "Amber Valley"
+ },
+ "E07000033": {
+  "households": 35262,
+  "name": "Bolsover"
+ },
+ "E07000034": {
+  "households": 48058,
+  "name": "Chesterfield"
+ },
+ "E07000035": {
+  "households": 32283,
+  "name": "Derbyshire Dales"
+ },
+ "E07000036": {
+  "households": 50334,
+  "name": "Erewash"
+ },
+ "E07000037": {
+  "households": 40772,
+  "name": "High Peak"
+ },
+ "E07000038": {
+  "households": 45987,
+  "name": "North East Derbyshire"
+ },
+ "E07000039": {
+  "households": 45240,
+  "name": "South Derbyshire"
+ },
+ "E07000040": {
+  "households": 66788,
+  "name": "East Devon"
+ },
+ "E07000041": {
+  "households": 52554,
+  "name": "Exeter"
+ },
+ "E07000042": {
+  "households": 35633,
+  "name": "Mid Devon"
+ },
+ "E07000043": {
+  "households": 43197,
+  "name": "North Devon"
+ },
+ "E07000044": {
+  "households": 39335,
+  "name": "South Hams"
+ },
+ "E07000045": {
+  "households": 59838,
+  "name": "Teignbridge"
+ },
+ "E07000046": {
+  "households": 30457,
+  "name": "Torridge"
+ },
+ "E07000047": {
+  "households": 24818,
+  "name": "West Devon"
+ },
+ "E07000061": {
+  "households": 45610,
+  "name": "Eastbourne"
+ },
+ "E07000062": {
+  "households": 40453,
+  "name": "Hastings"
+ },
+ "E07000063": {
+  "households": 43688,
+  "name": "Lewes"
+ },
+ "E07000064": {
+  "households": 42102,
+  "name": "Rother"
+ },
+ "E07000065": {
+  "households": 68266,
+  "name": "Wealden"
+ },
+ "E07000066": {
+  "households": 76362,
+  "name": "Basildon"
+ },
+ "E07000067": {
+  "households": 64986,
+  "name": "Braintree"
+ },
+ "E07000068": {
+  "households": 32342,
+  "name": "Brentwood"
+ },
+ "E07000069": {
+  "households": 37389,
+  "name": "Castle Point"
+ },
+ "E07000070": {
+  "households": 75401,
+  "name": "Chelmsford"
+ },
+ "E07000071": {
+  "households": 79710,
+  "name": "Colchester"
+ },
+ "E07000072": {
+  "households": 54557,
+  "name": "Epping Forest"
+ },
+ "E07000073": {
+  "households": 37857,
+  "name": "Harlow"
+ },
+ "E07000074": {
+  "households": 27900,
+  "name": "Maldon"
+ },
+ "E07000075": {
+  "households": 35557,
+  "name": "Rochford"
+ },
+ "E07000076": {
+  "households": 67451,
+  "name": "Tendring"
+ },
+ "E07000077": {
+  "households": 36958,
+  "name": "Uttlesford"
+ },
+ "E07000078": {
+  "households": 52899,
+  "name": "Cheltenham"
+ },
+ "E07000079": {
+  "households": 40597,
+  "name": "Cotswold"
+ },
+ "E07000080": {
+  "households": 37217,
+  "name": "Forest of Dean"
+ },
+ "E07000081": {
+  "households": 55407,
+  "name": "Gloucester"
+ },
+ "E07000082": {
+  "households": 52378,
+  "name": "Stroud"
+ },
+ "E07000083": {
+  "households": 40931,
+  "name": "Tewkesbury"
+ },
+ "E07000084": {
+  "households": 76645,
+  "name": "Basingstoke and Deane"
+ },
+ "E07000085": {
+  "households": 52718,
+  "name": "East Hampshire"
+ },
+ "E07000086": {
+  "households": 56924,
+  "name": "Eastleigh"
+ },
+ "E07000087": {
+  "households": 48639,
+  "name": "Fareham"
+ },
+ "E07000088": {
+  "households": 35922,
+  "name": "Gosport"
+ },
+ "E07000089": {
+  "households": 39964,
+  "name": "Hart"
+ },
+ "E07000090": {
+  "households": 53589,
+  "name": "Havant"
+ },
+ "E07000091": {
+  "households": 77566,
+  "name": "New Forest"
+ },
+ "E07000092": {
+  "households": 39303,
+  "name": "Rushmoor"
+ },
+ "E07000093": {
+  "households": 54708,
+  "name": "Test Valley"
+ },
+ "E07000094": {
+  "households": 51715,
+  "name": "Winchester"
+ },
+ "E07000095": {
+  "households": 39849,
+  "name": "Broxbourne"
+ },
+ "E07000096": {
+  "households": 63412,
+  "name": "Dacorum"
+ },
+ "E07000098": {
+  "households": 42682,
+  "name": "Hertsmere"
+ },
+ "E07000099": {
+  "households": 56732,
+  "name": "North Hertfordshire"
+ },
+ "E07000102": {
+  "households": 36858,
+  "name": "Three Rivers"
+ },
+ "E07000103": {
+  "households": 39628,
+  "name": "Watford"
+ },
+ "E07000105": {
+  "households": 53583,
+  "name": "Ashford"
+ },
+ "E07000106": {
+  "households": 63792,
+  "name": "Canterbury"
+ },
+ "E07000107": {
+  "households": 45696,
+  "name": "Dartford"
+ },
+ "E07000108": {
+  "households": 50548,
+  "name": "Dover"
+ },
+ "E07000109": {
+  "households": 41724,
+  "name": "Gravesham"
+ },
+ "E07000110": {
+  "households": 71208,
+  "name": "Maidstone"
+ },
+ "E07000111": {
+  "households": 49013,
+  "name": "Sevenoaks"
+ },
+ "E07000112": {
+  "households": 48338,
+  "name": "Folkestone and Hythe"
+ },
+ "E07000113": {
+  "households": 60495,
+  "name": "Swale"
+ },
+ "E07000114": {
+  "households": 62200,
+  "name": "Thanet"
+ },
+ "E07000115": {
+  "households": 53573,
+  "name": "Tonbridge and Malling"
+ },
+ "E07000116": {
+  "households": 48223,
+  "name": "Tunbridge Wells"
+ },
+ "E07000117": {
+  "households": 39872,
+  "name": "Burnley"
+ },
+ "E07000118": {
+  "households": 50132,
+  "name": "Chorley"
+ },
+ "E07000119": {
+  "households": 37606,
+  "name": "Fylde"
+ },
+ "E07000120": {
+  "households": 34790,
+  "name": "Hyndburn"
+ },
+ "E07000121": {
+  "households": 59978,
+  "name": "Lancaster"
+ },
+ "E07000122": {
+  "households": 38066,
+  "name": "Pendle"
+ },
+ "E07000123": {
+  "households": 59607,
+  "name": "Preston"
+ },
+ "E07000124": {
+  "households": 26747,
+  "name": "Ribble Valley"
+ },
+ "E07000125": {
+  "households": 30561,
+  "name": "Rossendale"
+ },
+ "E07000126": {
+  "households": 48586,
+  "name": "South Ribble"
+ },
+ "E07000127": {
+  "households": 48533,
+  "name": "West Lancashire"
+ },
+ "E07000128": {
+  "households": 50767,
+  "name": "Wyre"
+ },
+ "E07000129": {
+  "households": 42575,
+  "name": "Blaby"
+ },
+ "E07000130": {
+  "households": 73785,
+  "name": "Charnwood"
+ },
+ "E07000131": {
+  "households": 40413,
+  "name": "Harborough"
+ },
+ "E07000132": {
+  "households": 49446,
+  "name": "Hinckley and Bosworth"
+ },
+ "E07000133": {
+  "households": 22599,
+  "name": "Melton"
+ },
+ "E07000134": {
+  "households": 44973,
+  "name": "North West Leicestershire"
+ },
+ "E07000135": {
+  "households": 22617,
+  "name": "Oadby and Wigston"
+ },
+ "E07000136": {
+  "households": 29404,
+  "name": "Boston"
+ },
+ "E07000137": {
+  "households": 64754,
+  "name": "East Lindsey"
+ },
+ "E07000138": {
+  "households": 42507,
+  "name": "Lincoln"
+ },
+ "E07000139": {
+  "households": 50989,
+  "name": "North Kesteven"
+ },
+ "E07000140": {
+  "households": 40703,
+  "name": "South Holland"
+ },
+ "E07000141": {
+  "households": 62850,
+  "name": "South Kesteven"
+ },
+ "E07000142": {
+  "households": 42345,
+  "name": "West Lindsey"
+ },
+ "E07000143": {
+  "households": 60359,
+  "name": "Breckland"
+ },
+ "E07000144": {
+  "households": 57760,
+  "name": "Broadland"
+ },
+ "E07000145": {
+  "households": 44544,
+  "name": "Great Yarmouth"
+ },
+ "E07000146": {
+  "households": 67464,
+  "name": "King's Lynn and West Norfolk"
+ },
+ "E07000147": {
+  "households": 48374,
+  "name": "North Norfolk"
+ },
+ "E07000148": {
+  "households": 64459,
+  "name": "Norwich"
+ },
+ "E07000149": {
+  "households": 61381,
+  "name": "South Norfolk"
+ },
+ "E07000163": {
+  "households": 26069,
+  "name": "Craven"
+ },
+ "E07000164": {
+  "households": 40802,
+  "name": "Hambleton"
+ },
+ "E07000165": {
+  "households": 71169,
+  "name": "Harrogate"
+ },
+ "E07000166": {
+  "households": 20944,
+  "name": "Richmondshire"
+ },
+ "E07000167": {
+  "households": 24714,
+  "name": "Ryedale"
+ },
+ "E07000168": {
+  "households": 51123,
+  "name": "Scarborough"
+ },
+ "E07000169": {
+  "households": 39560,
+  "name": "Selby"
+ },
+ "E07000170": {
+  "households": 54508,
+  "name": "Ashfield"
+ },
+ "E07000171": {
+  "households": 51458,
+  "name": "Bassetlaw"
+ },
+ "E07000172": {
+  "households": 48361,
+  "name": "Broxtowe"
+ },
+ "E07000173": {
+  "households": 51551,
+  "name": "Gedling"
+ },
+ "E07000174": {
+  "households": 48030,
+  "name": "Mansfield"
+ },
+ "E07000175": {
+  "households": 53331,
+  "name": "Newark and Sherwood"
+ },
+ "E07000176": {
+  "households": 49883,
+  "name": "Rushcliffe"
+ },
+ "E07000177": {
+  "households": 65894,
+  "name": "Cherwell"
+ },
+ "E07000178": {
+  "households": 55238,
+  "name": "Oxford"
+ },
+ "E07000179": {
+  "households": 61497,
+  "name": "South Oxfordshire"
+ },
+ "E07000180": {
+  "households": 57498,
+  "name": "Vale of White Horse"
+ },
+ "E07000181": {
+  "households": 47981,
+  "name": "West Oxfordshire"
+ },
+ "E07000187": {
+  "households": 50294,
+  "name": "Mendip"
+ },
+ "E07000188": {
+  "households": 53904,
+  "name": "Sedgemoor"
+ },
+ "E07000189": {
+  "households": 75936,
+  "name": "South Somerset"
+ },
+ "E07000192": {
+  "households": 43457,
+  "name": "Cannock Chase"
+ },
+ "E07000193": {
+  "households": 51293,
+  "name": "East Staffordshire"
+ },
+ "E07000194": {
+  "households": 45630,
+  "name": "Lichfield"
+ },
+ "E07000195": {
+  "households": 53423,
+  "name": "Newcastle-under-Lyme"
+ },
+ "E07000196": {
+  "households": 46121,
+  "name": "South Staffordshire"
+ },
+ "E07000197": {
+  "households": 60047,
+  "name": "Stafford"
+ },
+ "E07000198": {
+  "households": 42355,
+  "name": "Staffordshire Moorlands"
+ },
+ "E07000199": {
+  "households": 32895,
+  "name": "Tamworth"
+ },
+ "E07000200": {
+  "households": 40200,
+  "name": "Babergh"
+ },
+ "E07000202": {
+  "households": 59507,
+  "name": "Ipswich"
+ },
+ "E07000203": {
+  "households": 44343,
+  "name": "Mid Suffolk"
+ },
+ "E07000207": {
+  "households": 55590,
+  "name": "Elmbridge"
+ },
+ "E07000208": {
+  "households": 31321,
+  "name": "Epsom and Ewell"
+ },
+ "E07000209": {
+  "households": 55760,
+  "name": "Guildford"
+ },
+ "E07000210": {
+  "households": 37139,
+  "name": "Mole Valley"
+ },
+ "E07000211": {
+  "households": 59849,
+  "name": "Reigate and Banstead"
+ },
+ "E07000212": {
+  "households": 34838,
+  "name": "Runnymede"
+ },
+ "E07000213": {
+  "households": 41805,
+  "name": "Spelthorne"
+ },
+ "E07000214": {
+  "households": 36008,
+  "name": "Surrey Heath"
+ },
+ "E07000215": {
+  "households": 35623,
+  "name": "Tandridge"
+ },
+ "E07000216": {
+  "households": 52448,
+  "name": "Waverley"
+ },
+ "E07000217": {
+  "households": 41437,
+  "name": "Woking"
+ },
+ "E07000218": {
+  "households": 27580,
+  "name": "North Warwickshire"
+ },
+ "E07000219": {
+  "households": 56586,
+  "name": "Nuneaton and Bedworth"
+ },
+ "E07000220": {
+  "households": 47013,
+  "name": "Rugby"
+ },
+ "E07000221": {
+  "households": 59464,
+  "name": "Stratford-on-Avon"
+ },
+ "E07000222": {
+  "households": 62619,
+  "name": "Warwick"
+ },
+ "E07000223": {
+  "households": 27678,
+  "name": "Adur"
+ },
+ "E07000224": {
+  "households": 72661,
+  "name": "Arun"
+ },
+ "E07000225": {
+  "households": 54118,
+  "name": "Chichester"
+ },
+ "E07000226": {
+  "households": 45502,
+  "name": "Crawley"
+ },
+ "E07000227": {
+  "households": 62370,
+  "name": "Horsham"
+ },
+ "E07000228": {
+  "households": 63349,
+  "name": "Mid Sussex"
+ },
+ "E07000229": {
+  "households": 49538,
+  "name": "Worthing"
+ },
+ "E07000234": {
+  "households": 41266,
+  "name": "Bromsgrove"
+ },
+ "E07000235": {
+  "households": 34892,
+  "name": "Malvern Hills"
+ },
+ "E07000236": {
+  "households": 36378,
+  "name": "Redditch"
+ },
+ "E07000237": {
+  "households": 44722,
+  "name": "Worcester"
+ },
+ "E07000238": {
+  "households": 57356,
+  "name": "Wychavon"
+ },
+ "E07000239": {
+  "households": 45320,
+  "name": "Wyre Forest"
+ },
+ "E07000240": {
+  "households": 58991,
+  "name": "St Albans"
+ },
+ "E07000241": {
+  "households": 46209,
+  "name": "Welwyn Hatfield"
+ },
+ "E07000242": {
+  "households": 62021,
+  "name": "East Hertfordshire"
+ },
+ "E07000243": {
+  "households": 36511,
+  "name": "Stevenage"
+ },
+ "E07000244": {
+  "households": 110747,
+  "name": "East Suffolk"
+ },
+ "E07000245": {
+  "households": 78746,
+  "name": "West Suffolk"
+ },
+ "E07000246": {
+  "households": 69986,
+  "name": "Somerset West and Taunton"
+ },
+ "E08000001": {
+  "households": 118790,
+  "name": "Bolton"
+ },
+ "E08000002": {
+  "households": 80696,
+  "name": "Bury"
+ },
+ "E08000003": {
+  "households": 214732,
+  "name": "Manchester"
+ },
+ "E08000004": {
+  "households": 93140,
+  "name": "Oldham"
+ },
+ "E08000005": {
+  "households": 90223,
+  "name": "Rochdale"
+ },
+ "E08000006": {
+  "households": 115116,
+  "name": "Salford"
+ },
+ "E08000007": {
+  "households": 126648,
+  "name": "Stockport"
+ },
+ "E08000008": {
+  "households": 99527,
+  "name": "Tameside"
+ },
+ "E08000009": {
+  "households": 96269,
+  "name": "Trafford"
+ },
+ "E08000010": {
+  "households": 143105,
+  "name": "Wigan"
+ },
+ "E08000011": {
+  "households": 66073,
+  "name": "Knowsley"
+ },
+ "E08000012": {
+  "households": 207491,
+  "name": "Liverpool"
+ },
+ "E08000013": {
+  "households": 81011,
+  "name": "St. Helens"
+ },
+ "E08000014": {
+  "households": 123073,
+  "name": "Sefton"
+ },
+ "E08000015": {
+  "households": 143252,
+  "name": "Wirral"
+ },
+ "E08000016": {
+  "households": 108053,
+  "name": "Barnsley"
+ },
+ "E08000017": {
+  "households": 133482,
+  "name": "Doncaster"
+ },
+ "E08000018": {
+  "households": 113925,
+  "name": "Rotherham"
+ },
+ "E08000019": {
+  "households": 231950,
+  "name": "Sheffield"
+ },
+ "E08000021": {
+  "households": 122797,
+  "name": "Newcastle upon Tyne"
+ },
+ "E08000022": {
+  "households": 96232,
+  "name": "North Tyneside"
+ },
+ "E08000023": {
+  "households": 68287,
+  "name": "South Tyneside"
+ },
+ "E08000024": {
+  "households": 122177,
+  "name": "Sunderland"
+ },
+ "E08000025": {
+  "households": 423456,
+  "name": "Birmingham"
+ },
+ "E08000026": {
+  "households": 134139,
+  "name": "Coventry"
+ },
+ "E08000027": {
+  "households": 137069,
+  "name": "Dudley"
+ },
+ "E08000028": {
+  "households": 130246,
+  "name": "Sandwell"
+ },
+ "E08000029": {
+  "households": 89483,
+  "name": "Solihull"
+ },
+ "E08000030": {
+  "households": 112226,
+  "name": "Walsall"
+ },
+ "E08000031": {
+  "households": 105141,
+  "name": "Wolverhampton"
+ },
+ "E08000032": {
+  "households": 209867,
+  "name": "Bradford"
+ },
+ "E08000033": {
+  "households": 90476,
+  "name": "Calderdale"
+ },
+ "E08000034": {
+  "households": 177989,
+  "name": "Kirklees"
+ },
+ "E08000035": {
+  "households": 341466,
+  "name": "Leeds"
+ },
+ "E08000036": {
+  "households": 153075,
+  "name": "Wakefield"
+ },
+ "E08000037": {
+  "households": 88999,
+  "name": "Gateshead"
+ },
+ "E09000001": {
+  "households": 4914,
+  "name": "City of London"
+ },
+ "E09000002": {
+  "households": 73902,
+  "name": "Barking and Dagenham"
+ },
+ "E09000003": {
+  "households": 148917,
+  "name": "Barnet"
+ },
+ "E09000004": {
+  "households": 95300,
+  "name": "Bexley"
+ },
+ "E09000005": {
+  "households": 118612,
+  "name": "Brent"
+ },
+ "E09000006": {
+  "households": 135827,
+  "name": "Bromley"
+ },
+ "E09000007": {
+  "households": 92759,
+  "name": "Camden"
+ },
+ "E09000008": {
+  "households": 152946,
+  "name": "Croydon"
+ },
+ "E09000009": {
+  "households": 133659,
+  "name": "Ealing"
+ },
+ "E09000010": {
+  "households": 120923,
+  "name": "Enfield"
+ },
+ "E09000011": {
+  "households": 114052,
+  "name": "Greenwich"
+ },
+ "E09000012": {
+  "households": 106081,
+  "name": "Hackney"
+ },
+ "E09000013": {
+  "households": 81244,
+  "name": "Hammersmith and Fulham"
+ },
+ "E09000014": {
+  "households": 105092,
+  "name": "Haringey"
+ },
+ "E09000015": {
+  "households": 89642,
+  "name": "Harrow"
+ },
+ "E09000016": {
+  "households": 101277,
+  "name": "Havering"
+ },
+ "E09000017": {
+  "households": 109228,
+  "name": "Hillingdon"
+ },
+ "E09000018": {
+  "households": 102961,
+  "name": "Hounslow"
+ },
+ "E09000019": {
+  "households": 96496,
+  "name": "Islington"
+ },
+ "E09000020": {
+  "households": 66884,
+  "name": "Kensington and Chelsea"
+ },
+ "E09000021": {
+  "households": 65626,
+  "name": "Kingston upon Thames"
+ },
+ "E09000022": {
+  "households": 134688,
+  "name": "Lambeth"
+ },
+ "E09000023": {
+  "households": 122392,
+  "name": "Lewisham"
+ },
+ "E09000024": {
+  "households": 81729,
+  "name": "Merton"
+ },
+ "E09000025": {
+  "households": 115507,
+  "name": "Newham"
+ },
+ "E09000026": {
+  "households": 103713,
+  "name": "Redbridge"
+ },
+ "E09000027": {
+  "households": 80705,
+  "name": "Richmond upon Thames"
+ },
+ "E09000028": {
+  "households": 130818,
+  "name": "Southwark"
+ },
+ "E09000029": {
+  "households": 82348,
+  "name": "Sutton"
+ },
+ "E09000030": {
+  "households": 120539,
+  "name": "Tower Hamlets"
+ },
+ "E09000031": {
+  "households": 102901,
+  "name": "Waltham Forest"
+ },
+ "E09000032": {
+  "households": 137393,
+  "name": "Wandsworth"
+ },
+ "E09000033": {
+  "households": 94815,
+  "name": "Westminster"
+ },
+ "W06000001": {
+  "households": 30822,
+  "name": "Isle of Anglesey"
+ },
+ "W06000002": {
+  "households": 51105,
+  "name": "Gwynedd"
+ },
+ "W06000003": {
+  "households": 52235,
+  "name": "Conwy"
+ },
+ "W06000004": {
+  "households": 42387,
+  "name": "Denbighshire"
+ },
+ "W06000005": {
+  "households": 66911,
+  "name": "Flintshire"
+ },
+ "W06000006": {
+  "households": 57914,
+  "name": "Wrexham"
+ },
+ "W06000008": {
+  "households": 30893,
+  "name": "Ceredigion"
+ },
+ "W06000009": {
+  "households": 55488,
+  "name": "Pembrokeshire"
+ },
+ "W06000010": {
+  "households": 81759,
+  "name": "Carmarthenshire"
+ },
+ "W06000011": {
+  "households": 104962,
+  "name": "Swansea"
+ },
+ "W06000012": {
+  "households": 62375,
+  "name": "Neath Port Talbot"
+ },
+ "W06000013": {
+  "households": 62360,
+  "name": "Bridgend"
+ },
+ "W06000014": {
+  "households": 57450,
+  "name": "Vale of Glamorgan"
+ },
+ "W06000015": {
+  "households": 147333,
+  "name": "Cardiff"
+ },
+ "W06000016": {
+  "households": 103339,
+  "name": "Rhondda Cynon Taff"
+ },
+ "W06000018": {
+  "households": 76257,
+  "name": "Caerphilly"
+ },
+ "W06000019": {
+  "households": 30340,
+  "name": "Blaenau Gwent"
+ },
+ "W06000020": {
+  "households": 40241,
+  "name": "Torfaen"
+ },
+ "W06000021": {
+  "households": 40923,
+  "name": "Monmouthshire"
+ },
+ "W06000022": {
+  "households": 66054,
+  "name": "Newport"
+ },
+ "W06000023": {
+  "households": 60182,
+  "name": "Powys"
+ },
+ "W06000024": {
+  "households": 25783,
+  "name": "Merthyr Tydfil"
+ }
+}

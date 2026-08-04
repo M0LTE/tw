@@ -60,8 +60,11 @@ jobs:
             echo 'Nothing changed since the last run.'
             exit 0
           fi
-          git commit -m "Snapshot $(date -u +%Y-%m-%d): $(jq -r \
-            '"\(.open) open (+\(.appeared) new, \(.resolved) cleared)"' /tmp/summary.json)"
+          git commit -m "Snapshot $(date -u +%Y-%m-%dT%H:%MZ): $(jq -r '
+            def m(k): .changes[k] // {appeared:0,resolved:0};
+            "\(.open) faults (+\(m("work_order").appeared)/-\(m("work_order").resolved)), " +
+            "\(.reports) reports (+\(m("report").appeared)/-\(m("report").resolved))"
+          ' /tmp/summary.json)"
           # Another run may have pushed while we were collecting.
           for attempt in 1 2 3 4; do
             git pull --rebase origin "${GITHUB_REF_NAME}" && \

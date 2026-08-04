@@ -174,11 +174,14 @@ def main(argv: list[str] | None = None) -> int:
     log.info("database rebuilt: %d open faults, %d live reports", open_now, reports_now)
     conn.close()
 
+    # Consumed by the workflow to write the commit message, so it reports every
+    # kind of record: a run that only picked up new public reports still moved
+    # something, and saying "+0 new" would hide that.
     print(json.dumps({
         "observed_at": observed_at,
         "open": open_now,
         "reports": reports_now,
-        **{k: v for k, v in delta.tally().get(WORK_ORDER, {}).items()},
+        "changes": delta.tally(),
     }))
     return 0
 

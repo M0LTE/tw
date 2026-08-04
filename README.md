@@ -175,8 +175,11 @@ These matter if you are going to quote the numbers at anyone.
 - **Work order timestamps are published as UK local time with a UTC label.** We convert them
   on ingest; deltas written before this was spotted are corrected on replay. The public
   reports layer uses ArcGIS editor-tracking fields, which are already UTC.
-- **Thames Water's map labels every public report "Leak"**, whatever was reported. The feed
-  carries no per-report problem type — `ProblemType` is `1` on every record.
+- **"Leak" is Thames Water's label for the whole pending-pins layer**, not a per-report
+  classification: `ProblemType` is `1` on every record. Checked empirically — of 159 pins that
+  could be matched to a work order raised soon after at the same address, 156 (98%) were
+  `Visible Leak Investigation`, 2 were flooding and 1 a blockage. So the label is broadly
+  right but not exclusive, and that match is the same coarse one #1 warns about.
 - **The reference shown on their map is the case number, not the work order number.** Both
   are searchable here.
 - **A public report leaving the map does not mean it became a work order.** The two feeds

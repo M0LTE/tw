@@ -509,7 +509,7 @@ function renderReports() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${formatDate(r.reported)}</td>
-      <td title="Thames Water labels every pin in this layer &quot;Leak&quot;, whatever was reported">Leak</td>
+      <td title="Thames Water's label for this layer. Where a pin can be matched to a work order raised soon after at the same address, 98% are leak investigations — but the label is theirs, not a per-report classification">Leak</td>
       <td class="num age age-${ageClass(r.age)}">${formatAge(r.age)}</td>
       <td class="wrap">${locationCell(r, r.town)}</td>
       <td>${escape(titleCase(r.town || ''))}</td>
@@ -566,8 +566,11 @@ function openReportDetail(r) {
       ? escape(titleCase(r.town || '')) + ' ' + escape(r.postcode || '')
       : 'No address published'}</p>
     <dl class="kv">${rows.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>
-    <p class="footnote" style="margin-top:0">Thames Water's map labels every pin in this layer
-    &ldquo;Leak&rdquo;, whatever was actually reported — the feed carries no per-report problem type.</p>
+    <p class="footnote" style="margin-top:0">&ldquo;Leak&rdquo; is Thames Water's label for this
+    whole layer, not a classification of this report: the feed carries no per-report problem type
+    (<code>ProblemType</code> is <code>1</code> on every pin). It is broadly accurate — where a pin
+    can be matched to a work order raised soon after at the same address, 98% are leak
+    investigations — but a small number become flooding or blockage work instead.</p>
     <h2 style="font-size:14px;margin:0 0 10px">What we have seen</h2>
     <ul class="timeline">
       <li><strong>Reported to Thames Water</strong><div class="when">${escape(formatDate(r.reported))}</div></li>

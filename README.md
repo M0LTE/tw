@@ -150,6 +150,14 @@ Run the tests with:
 python -m unittest discover -s tests -v
 ```
 
+Most figures on the site are counts `build_site` produces anyway. A few are one-off
+measurements quoted as prose in the caveats below, and those are the ones that quietly go
+stale, so they have a command of their own:
+
+```bash
+python -m collector.checks   # leak-label proportion, link rate, address-less records
+```
+
 ## Setting up the scheduled run
 
 1. **Settings → Pages → Source: GitHub Actions.**

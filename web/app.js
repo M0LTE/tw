@@ -16,17 +16,25 @@ const PAGE_SIZE = 250;
 const state = {
   summary: null,
   faults: [],
+  cleared: [],
+  clearedWindow: null,
   history: {},
   epoch: null,
   today: 0,
   view: 'overview',
-  filters: { search: '', source: '', status: '', journey: '', minAge: '' },
+  mode: 'open',
+  filters: { search: '', source: '', status: '', journey: '', minAge: '', clearedWithin: '', verdict: '' },
   sort: { key: 'age', dir: -1 },
   page: 0,
   filtered: [],
   map: null,
   mapLayer: null,
 };
+
+// The Faults view browses one of two record sets through the same filters,
+// sorting and paging. They are separate arrays because a fault's row index is
+// the key into `history` and `faultReports`, which only exist for open faults.
+const rowsForMode = () => (state.mode === 'cleared' ? state.cleared : state.faults);
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -152,6 +160,7 @@ function expand(open) {
     out[i] = {
       i,
       id: cols.id[i],
+      kind: 'open',
       workOrder: cols.wo[i],
       caseNumber: cols.cn ? cols.cn[i] : null,
       status: dict.status[cols.s[i]],
@@ -179,6 +188,42 @@ function expand(open) {
   state.statusDict = dict.status;
   state.faultReports = open.reports || {};
   return out;
+}
+
+// Faults that have left the open feed. Same columns as `expand`, plus the day
+// they went and Thames Water's own verdict where the closed feed carries one.
+// `age` is deliberately time-to-clear rather than age-now, so sorting by it
+// answers "what sat there longest before it went".
+function expandCleared(data) {
+  const { dict, cols } = data;
+  return cols.id.map((id, i) => {
+    const raised = cols.r[i];
+    const cleared = cols.d[i];
+    const row = {
+      i,
+      id,
+      kind: 'cleared',
+      workOrder: cols.wo[i],
+      caseNumber: cols.cn[i],
+      status: dict.status[cols.s[i]],
+      journey: dict.journey[cols.j[i]],
+      workType: dict.work_type[cols.w[i]],
+      priority: dict.priority[cols.p[i]],
+      city: dict.city[cols.c[i]],
+      source: dict.source[cols.n[i]],
+      postcode: cols.pc[i],
+      street: cols.st[i],
+      raised,
+      cleared,
+      verdict: dict.verdict[cols.v[i]] || null,
+      age: raised === null || cleared === null ? null : cleared - raised,
+      lon: cols.lon[i],
+      lat: cols.lat[i],
+    };
+    row.haystack = [row.street, row.postcode, row.city, row.workOrder, row.caseNumber, row.journey]
+      .filter(Boolean).join(' ').toLowerCase();
+    return row;
+  });
 }
 
 // ── Overview ────────────────────────────────────────────────────
@@ -357,17 +402,45 @@ function escape(text) {
 
 // ── Faults table ────────────────────────────────────────────────
 
+// Only the filters that mean something in the current mode are shown: an age
+// filter over cleared faults would read as "age now", which they no longer have.
+function syncModeUI() {
+  const cleared = state.mode === 'cleared';
+  $('#f-cleared').hidden = !cleared;
+  $('#f-verdict').hidden = !cleared;
+  $('#f-age').hidden = cleared;
+  $('#f-mode').value = state.mode;
+
+  const note = $('#f-cleared-note');
+  note.hidden = !cleared;
+  if (cleared) {
+    note.innerHTML = 'A fault is <strong>cleared</strong> when it stops appearing in the open feed. '
+      + 'Where Thames Water\u2019s closed feed also carries it, their own Completed or Cancelled verdict is shown; '
+      + 'where it does not, <strong>nothing confirms what happened</strong> \u2014 a bulk disappearance is not evidence of bulk repair. '
+      + `Covers the last ${state.clearedWindow || 90} days of departures.`;
+  }
+}
+
 function applyFilters() {
   const f = state.filters;
   const needle = f.search.trim().toLowerCase();
   const minAge = f.minAge ? Number(f.minAge) : null;
 
-  state.filtered = state.faults.filter((x) => {
+  // "Cleared within N days" counts back from the latest snapshot, not from the
+  // browser's clock: the site is only ever as current as the last collection.
+  const within = f.clearedWithin === '' ? null : Number(f.clearedWithin);
+
+  state.filtered = rowsForMode().filter((x) => {
     if (f.source && x.source !== f.source) return false;
     if (f.status && x.status !== f.status) return false;
     if (f.journey && x.journey !== f.journey) return false;
     if (minAge !== null && !(x.age > minAge)) return false;
     if (needle && !x.haystack.includes(needle)) return false;
+    if (state.mode === 'cleared') {
+      if (within !== null && !(x.cleared !== null && x.cleared >= state.today - within)) return false;
+      if (f.verdict === '_none' && x.verdict) return false;
+      if (f.verdict && f.verdict !== '_none' && x.verdict !== f.verdict) return false;
+    }
     return true;
   });
 
@@ -385,9 +458,17 @@ function applyFilters() {
   renderFaults();
 }
 
-const COLUMNS = [
-  { key: 'raised', label: 'Raised', render: (x) => formatDate(x.raised) },
-  { key: 'age', label: 'Age', cls: 'num', render: (x) => `<span class="age age-${ageClass(x.age)}">${formatAge(x.age)}</span>` },
+// Thames Water's own verdict, or the honest absence of one. A cleared fault
+// with no closed-feed record has not been confirmed as anything — saying so is
+// the point of the column.
+function verdictCell(x) {
+  if (x.verdict === 'Completed') return '<span class="verdict done">Completed</span>';
+  if (x.verdict === 'Canceled') return '<span class="verdict cancelled">Cancelled</span>';
+  if (x.verdict) return `<span class="verdict">${escape(x.verdict)}</span>`;
+  return '<span class="verdict unknown" title="This fault stopped being published, but Thames Water\'s closed feed carries no record of it">Not confirmed</span>';
+}
+
+const BASE_COLUMNS = [
   { key: 'journey', label: 'Problem', render: (x) => escape(x.journey || '') },
   { key: 'street', label: 'Where', cls: 'wrap', render: (x) => locationCell(x, x.city) },
   { key: 'status', label: 'Status', render: (x) => escape(x.status || '') },
@@ -396,11 +477,27 @@ const COLUMNS = [
   { key: 'caseNumber', label: 'Case', cls: 'mono', render: (x) => escape(x.caseNumber || '') },
 ];
 
+const OPEN_COLUMNS = [
+  { key: 'raised', label: 'Raised', render: (x) => formatDate(x.raised) },
+  { key: 'age', label: 'Age', cls: 'num', render: (x) => `<span class="age age-${ageClass(x.age)}">${formatAge(x.age)}</span>` },
+  ...BASE_COLUMNS,
+];
+
+const CLEARED_COLUMNS = [
+  { key: 'cleared', label: 'Cleared', render: (x) => formatDate(x.cleared) },
+  { key: 'verdict', label: 'Outcome', render: verdictCell },
+  { key: 'raised', label: 'Raised', render: (x) => formatDate(x.raised) },
+  { key: 'age', label: 'Took', cls: 'num', render: (x) => `<span class="age age-${ageClass(x.age)}">${formatAge(x.age)}</span>` },
+  ...BASE_COLUMNS,
+];
+
+const columns = () => (state.mode === 'cleared' ? CLEARED_COLUMNS : OPEN_COLUMNS);
+
 function renderFaults() {
   const table = $('#table-faults');
   const head = document.createElement('thead');
   const hr = document.createElement('tr');
-  for (const col of COLUMNS) {
+  for (const col of columns()) {
     const th = document.createElement('th');
     th.dataset.sort = col.key;
     th.textContent = col.label;
@@ -423,13 +520,16 @@ function renderFaults() {
   const start = state.page * PAGE_SIZE;
   for (const fault of state.filtered.slice(start, start + PAGE_SIZE)) {
     const tr = document.createElement('tr');
-    tr.innerHTML = COLUMNS.map((c) => `<td class="${c.cls || ''}">${c.render(fault)}</td>`).join('');
+    tr.innerHTML = columns().map((c) => `<td class="${c.cls || ''}">${c.render(fault)}</td>`).join('');
     tr.addEventListener('click', () => openDetail(fault));
     body.append(tr);
   }
 
   table.replaceChildren(head, body);
-  $('#f-count').textContent = `${formatNumber(state.filtered.length)} of ${formatNumber(state.faults.length)} faults`;
+  const total = rowsForMode().length;
+  $('#f-count').textContent = state.mode === 'cleared'
+    ? `${formatNumber(state.filtered.length)} of ${formatNumber(total)} cleared`
+    : `${formatNumber(state.filtered.length)} of ${formatNumber(total)} faults`;
 
   const pages = Math.ceil(state.filtered.length / PAGE_SIZE) || 1;
   const pager = $('#pager');
@@ -468,20 +568,35 @@ function downloadCSV(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
+const isoDay = (day) => (day === null || day === undefined ? '' : dayToDate(day).toISOString().slice(0, 10));
+
 function exportCSV() {
-  const header = ['work_order', 'case_number', 'raised', 'age_days', 'status', 'problem', 'work_type', 'street', 'postcode', 'town', 'network', 'lat', 'lon'];
-  const rows = state.filtered.map((x) => [
-    x.workOrder, x.caseNumber,
-    x.raised === null ? '' : dayToDate(x.raised).toISOString().slice(0, 10), x.age ?? '',
-    x.status, x.journey, x.workType, x.street, x.postcode, x.city, x.source, x.lat, x.lon,
-  ]);
-  downloadCSV([header, ...rows], `thames-water-faults-${new Date().toISOString().slice(0, 10)}.csv`);
+  const cleared = state.mode === 'cleared';
+  // `outcome` is empty rather than a guess when the closed feed has no record:
+  // a blank is honest, "unknown" in a data column invites being read as a value.
+  const header = cleared
+    ? ['work_order', 'case_number', 'raised', 'cleared', 'days_to_clear', 'outcome',
+       'last_status', 'problem', 'work_type', 'street', 'postcode', 'town', 'network', 'lat', 'lon']
+    : ['work_order', 'case_number', 'raised', 'age_days', 'status', 'problem', 'work_type',
+       'street', 'postcode', 'town', 'network', 'lat', 'lon'];
+
+  const rows = state.filtered.map((x) => (cleared
+    ? [x.workOrder, x.caseNumber, isoDay(x.raised), isoDay(x.cleared), x.age ?? '', x.verdict || '',
+       x.status, x.journey, x.workType, x.street, x.postcode, x.city, x.source, x.lat, x.lon]
+    : [x.workOrder, x.caseNumber, isoDay(x.raised), x.age ?? '',
+       x.status, x.journey, x.workType, x.street, x.postcode, x.city, x.source, x.lat, x.lon]));
+
+  const name = cleared ? 'thames-water-cleared' : 'thames-water-faults';
+  downloadCSV([header, ...rows], `${name}-${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
 // ── Detail dialog ───────────────────────────────────────────────
 
 function openDetail(fault) {
-  const history = state.history[fault.i] || [];
+  // `history` and `faultReports` are keyed by row index into the open-fault
+  // array, so they must not be read for a cleared fault — the indexes collide.
+  const isCleared = fault.kind === 'cleared';
+  const history = isCleared ? [] : state.history[fault.i] || [];
   const body = $('#detail-body');
 
   const rows = [
@@ -492,8 +607,19 @@ function openDetail(fault) {
     ['Work type', fault.workType],
     ['Priority', fault.priority && fault.priority !== 'N/A' ? fault.priority : null],
     ['Raised', formatDate(fault.raised)],
-    ['Open for', fault.age === null ? null : `${formatNumber(fault.age)} days`],
-    ['Current status', fault.status],
+    ...(isCleared
+      ? [
+        ['Left the map', formatDate(fault.cleared)],
+        ['Took', fault.age === null ? null : `${formatNumber(fault.age)} days`],
+        ['Outcome', fault.verdict === 'Canceled' ? 'Cancelled (Thames Water’s own record)'
+          : fault.verdict ? `${fault.verdict} (Thames Water’s own record)`
+            : 'Not confirmed — it stopped being published, and their closed feed has no record of it'],
+        ['Last published status', fault.status],
+      ]
+      : [
+        ['Open for', fault.age === null ? null : `${formatNumber(fault.age)} days`],
+        ['Current status', fault.status],
+      ]),
     ['Location', place(fault)],
     ['Postcode', fault.postcode],
     ['Coordinates', hasAddress(fault, fault.city) || fault.lat === null || fault.lat === undefined
@@ -504,8 +630,13 @@ function openDetail(fault) {
     ? history.map(([day, statusIndex]) => `
         <li><strong>${escape(state.statusDict[statusIndex] || 'Seen on map')}</strong>
         <div class="when">observed ${formatDate(day)}</div></li>`).join('')
-    : `<li class="pending"><strong>${escape(fault.status || 'Open')}</strong>
-       <div class="when">status history begins once this fault changes</div></li>`;
+    : isCleared
+      ? `<li><strong>${escape(fault.status || 'Last seen')}</strong>
+         <div class="when">last published status, ${escape(formatDate(fault.cleared))}</div></li>
+         <li class="pending"><strong>Gone from the map</strong>
+         <div class="when">first collection it was missing from: ${escape(formatDate(fault.cleared))}</div></li>`
+      : `<li class="pending"><strong>${escape(fault.status || 'Open')}</strong>
+         <div class="when">status history begins once this fault changes</div></li>`;
 
   body.innerHTML = `
     <h3>${escape(fault.journey || 'Fault')}${fault.street ? ' — ' + escape(titleCase(fault.street)) : ''}</h3>
@@ -516,7 +647,7 @@ function openDetail(fault) {
     ${hasAddress(fault, fault.city) ? '' : `<p class="footnote" style="margin-top:0">${NO_ADDRESS_NOTE}</p>`}
     <h2 style="font-size:14px;margin:0 0 10px">What we have seen</h2>
     <ul class="timeline">${timeline}</ul>
-    ${renderFaultLinks((state.faultReports || {})[fault.i], fault.raised)}
+    ${isCleared ? '' : renderFaultLinks((state.faultReports || {})[fault.i], fault.raised)}
     ${fault.lat ? `<p style="margin-top:16px"><a href="https://www.openstreetmap.org/?mlat=${fault.lat}&mlon=${fault.lon}#map=17/${fault.lat}/${fault.lon}" target="_blank" rel="noopener">View location on OpenStreetMap ↗</a></p>` : ''}
   `;
   $('#detail').showModal();
@@ -730,8 +861,11 @@ function renderMap() {
   }
 
   state.mapLayer = L.layerGroup(markers).addTo(state.map);
-  $('#map-note').textContent =
-    `${formatNumber(points.length)} faults and ${formatNumber(reports.length)} reports plotted`;
+  // The map plots whatever the Faults view is filtered to, so it has to say
+  // which set that is — otherwise cleared faults read as the live backlog.
+  $('#map-note').textContent = state.mode === 'cleared'
+    ? `${formatNumber(points.length)} cleared faults (coloured by how long they took) and ${formatNumber(reports.length)} reports plotted`
+    : `${formatNumber(points.length)} faults and ${formatNumber(reports.length)} reports plotted`;
   setTimeout(() => state.map.invalidateSize(), 0);
 }
 
@@ -901,14 +1035,25 @@ function wireUp() {
     timer = setTimeout(() => { state.filters.search = search.value; applyFilters(); }, 160);
   });
 
-  for (const [id, key] of [['#f-source', 'source'], ['#f-status', 'status'], ['#f-journey', 'journey'], ['#f-age', 'minAge']]) {
+  for (const [id, key] of [['#f-source', 'source'], ['#f-status', 'status'], ['#f-journey', 'journey'],
+                          ['#f-age', 'minAge'], ['#f-cleared', 'clearedWithin'], ['#f-verdict', 'verdict']]) {
     $(id).addEventListener('change', (e) => { state.filters[key] = e.target.value; applyFilters(); });
   }
 
+  $('#f-mode').addEventListener('change', (e) => {
+    state.mode = e.target.value;
+    // Sorting by clearance date is the whole reason for this mode; age is the
+    // right default for open faults. Reset rather than carry over, since
+    // `cleared` is not a key the open rows even have.
+    state.sort = state.mode === 'cleared' ? { key: 'cleared', dir: -1 } : { key: 'age', dir: -1 };
+    syncModeUI();
+    applyFilters();
+  });
+
   $('#f-reset').addEventListener('click', () => {
-    state.filters = { search: '', source: '', status: '', journey: '', minAge: '' };
+    state.filters = { search: '', source: '', status: '', journey: '', minAge: '', clearedWithin: '', verdict: '' };
     search.value = '';
-    for (const id of ['#f-source', '#f-status', '#f-journey', '#f-age']) $(id).value = '';
+    for (const id of ['#f-source', '#f-status', '#f-journey', '#f-age', '#f-cleared', '#f-verdict']) $(id).value = '';
     applyFilters();
   });
 
@@ -954,10 +1099,12 @@ function wireUp() {
 async function main() {
   wireUp();
   try {
-    const [summary, open, reports] = await Promise.all([
+    const [summary, open, reports, cleared] = await Promise.all([
       loadJSON('data/summary.json'),
       loadJSON('data/open.json'),
       loadJSON('data/reports.json').catch(() => null),
+      // Tolerated missing so the site still loads against an older data build.
+      loadJSON('data/cleared.json').catch(() => null),
     ]);
 
     state.summary = summary;
@@ -968,6 +1115,10 @@ async function main() {
     state.faults = expand(open);
     state.history = open.history;
     state.filtered = state.faults;
+    state.cleared = cleared ? expandCleared(cleared) : [];
+    state.clearedWindow = cleared ? cleared.window_days : null;
+    if (!state.cleared.length) $('#f-mode').hidden = true;
+    syncModeUI();
 
     const collected = summary.totals.latest_snapshot;
     $('#freshness-value').textContent = collected

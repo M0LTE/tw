@@ -38,6 +38,11 @@ LA_HOUSEHOLDS = REFERENCE / "la_households.json"
 EPOCH = dt.date(2020, 1, 1)
 # How much resolution history the "how fast do they fix things" panels use.
 RESOLVED_WINDOW_DAYS = 365
+# Cleared faults accumulate without limit, so the browsable list is capped.
+# At the observed ~200 clearances a day this is a few thousand rows; the
+# 2026-08-05 bulk departure alone was 4,272. Older ones stay in the database
+# and the change log, they are just not shipped to the browser.
+CLEARED_WINDOW_DAYS = 90
 # Age buckets, in days. The last bucket is open-ended.
 AGE_BUCKETS = (1, 7, 30, 90, 180, 365, 730)
 
@@ -137,6 +142,69 @@ def open_faults(conn: sqlite3.Connection, today: dt.date, links: dict | None = N
         "history": {str(k): v for k, v in history.items()},
         # Reports that look like they prompted this fault, keyed by row index.
         "reports": {str(index[k]): v for k, v in (links or {}).items() if k in index},
+    }
+
+
+def cleared_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
+    """Faults that have left the open feed, newest departure first.
+
+    Open faults are a bounded set; cleared ones accumulate forever, so this is
+    capped at ``CLEARED_WINDOW_DAYS``. The window is about keeping the payload
+    finite, not about the older records being uninteresting — they stay in the
+    database and in the change log.
+
+    Carries the closed-feed verdict where there is one. That is the whole point
+    of the view: a bulk departure is exactly when "cleared" and "repaired" are
+    most likely to differ, and the verdict is the only field that tells them
+    apart.
+    """
+    status, journey, city, source, work_type, priority, verdict = (Dictionary() for _ in range(7))
+    cols: dict[str, list] = {k: [] for k in
+                             ("id", "wo", "cn", "s", "j", "w", "p", "c", "n", "pc", "st",
+                              "r", "d", "v", "lon", "lat")}
+
+    cutoff = (today - dt.timedelta(days=CLEARED_WINDOW_DAYS)).isoformat()
+    rows = conn.execute(
+        "SELECT f.id, f.work_order_number, f.case_number, f.status, f.journey_type,"
+        "       f.mid_level_work_type, f.priority_flag, f.city, f.source, f.postcode,"
+        "       f.street, f.raised_at, f.resolved_at, f.lon, f.lat, cf.status AS verdict "
+        "FROM faults f LEFT JOIN closed_faults cf ON cf.id = f.id "
+        "WHERE f.is_open = 0 AND f.resolved_at >= ? "
+        "ORDER BY f.resolved_at DESC",
+        (cutoff,),
+    )
+    for row in rows:
+        cols["id"].append(row["id"])
+        cols["wo"].append(row["work_order_number"])
+        cols["cn"].append(row["case_number"])
+        cols["s"].append(status(row["status"]))
+        cols["j"].append(journey(row["journey_type"]))
+        cols["w"].append(work_type(row["mid_level_work_type"]))
+        cols["p"].append(priority(row["priority_flag"]))
+        cols["c"].append(city(row["city"]))
+        cols["n"].append(source(row["source"]))
+        cols["pc"].append(row["postcode"])
+        cols["st"].append(row["street"])
+        cols["r"].append(day_index(row["raised_at"]))
+        cols["d"].append(day_index(row["resolved_at"]))
+        cols["v"].append(verdict(row["verdict"]))
+        cols["lon"].append(None if row["lon"] is None else round(row["lon"], 5))
+        cols["lat"].append(None if row["lat"] is None else round(row["lat"], 5))
+
+    return {
+        "epoch": EPOCH.isoformat(),
+        "today": (today - EPOCH).days,
+        "window_days": CLEARED_WINDOW_DAYS,
+        "dict": {
+            "status": status.values,
+            "journey": journey.values,
+            "work_type": work_type.values,
+            "priority": priority.values,
+            "city": city.values,
+            "source": source.values,
+            "verdict": verdict.values,
+        },
+        "cols": cols,
     }
 
 
@@ -603,6 +671,7 @@ def build(db_path: Path, out: Path) -> None:
     payload["links"] = {"reports_matched": len(by_report), "faults_matched": len(by_fault)}
     _write(out / "summary.json", payload)
     _write(out / "open.json", open_faults(conn, today, by_fault))
+    _write(out / "cleared.json", cleared_faults(conn, today))
     _write(out / "reports.json", public_reports(conn, today, by_report))
     conn.close()
 

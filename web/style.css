@@ -305,3 +305,12 @@ td.rate { position: relative; min-width: 130px; }
 }
 .linklist .when { color: var(--text-dim); font-size: 12.5px; margin-top: 2px; }
 .prose h3 { margin: 18px 0 4px; font-size: 13.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Cleared-fault outcome. "Not confirmed" is deliberately the muted, neutral
+   style rather than a warning colour: it is the commonest case and it means
+   we do not know, not that something went wrong. */
+.verdict { font-size: 12.5px; white-space: nowrap; }
+.verdict.done { color: var(--c-resolved); font-weight: 600; }
+.verdict.cancelled { color: var(--text-dim); font-weight: 600; }
+.verdict.unknown { color: var(--text-dim); font-style: italic; cursor: help; }
+#f-cleared-note { margin: -4px 0 12px; max-width: none; }

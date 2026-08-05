@@ -617,6 +617,51 @@ class ClosureOutcomeTests(unittest.TestCase):
         self.assertEqual(result["matched"], 1)
         self.assertEqual(result["unexplained"], 1, "a departure with no closed record is unknown")
 
+    def test_cleared_payload_carries_the_verdict_or_admits_it_has_none(self):
+        """#20 — the browsable list of departures.
+
+        The verdict column is the reason this view exists, so a departure the
+        closed feed does not corroborate must come through as null rather than
+        being quietly rendered as a repair.
+        """
+        from collector import build_site
+
+        conn = sqlite3.connect(self.db)
+        conn.execute("DELETE FROM closed_faults WHERE id = 'B'")
+        conn.commit()
+        conn.row_factory = sqlite3.Row
+        payload = build_site.cleared_faults(conn, dt.date(2026, 1, 2))
+        conn.close()
+
+        cols = payload["cols"]
+        verdicts = dict(zip(cols["id"], (payload["dict"]["verdict"][v] for v in cols["v"])))
+        self.assertEqual(verdicts, {"A": "Completed", "B": None})
+        self.assertNotIn("C", verdicts, "a still-open fault must not appear")
+        self.assertNotIn("Z", verdicts, "a closed-only record was never observed departing")
+
+    def test_cleared_payload_respects_its_retention_window(self):
+        from collector import build_site
+
+        conn = sqlite3.connect(self.db)
+        conn.row_factory = sqlite3.Row
+        # A year on, both departures are outside a 90-day window.
+        payload = build_site.cleared_faults(conn, dt.date(2027, 1, 2))
+        conn.close()
+        self.assertEqual(payload["cols"]["id"], [])
+        self.assertEqual(payload["window_days"], build_site.CLEARED_WINDOW_DAYS)
+
+    def test_cleared_payload_is_newest_departure_first(self):
+        from collector import build_site
+
+        conn = sqlite3.connect(self.db)
+        conn.execute("UPDATE faults SET resolved_at='2026-01-01T00:00:00+00:00' WHERE id='A'")
+        conn.commit()
+        conn.row_factory = sqlite3.Row
+        payload = build_site.cleared_faults(conn, dt.date(2026, 1, 2))
+        conn.close()
+        # B departed on the 2nd, A on the 1st: the view opens on what just went.
+        self.assertEqual(payload["cols"]["id"], ["B", "A"])
+
 
 class CrossLinkTests(unittest.TestCase):
     """Associating reports with work orders raised at the same address (#17)."""

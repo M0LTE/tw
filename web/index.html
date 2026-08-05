@@ -115,6 +115,10 @@
   <!-- ── Faults ───────────────────────────────────────────────── -->
   <section id="view-faults" class="view" hidden>
     <div class="filters">
+      <select id="f-mode">
+        <option value="open">Still open</option>
+        <option value="cleared">Cleared</option>
+      </select>
       <input type="search" id="f-search" placeholder="Search street, postcode, town, work order…" autocomplete="off">
       <select id="f-source"></select>
       <select id="f-status"></select>
@@ -127,10 +131,24 @@
         <option value="365">Over 1 year</option>
         <option value="730">Over 2 years</option>
       </select>
+      <select id="f-cleared" hidden>
+        <option value="">Cleared any time</option>
+        <option value="0">Cleared today</option>
+        <option value="1">Cleared in last 2 days</option>
+        <option value="7">Cleared in last 7 days</option>
+        <option value="30">Cleared in last 30 days</option>
+      </select>
+      <select id="f-verdict" hidden>
+        <option value="">Any outcome</option>
+        <option value="Completed">Confirmed completed</option>
+        <option value="Canceled">Confirmed cancelled</option>
+        <option value="_none">No confirmation</option>
+      </select>
       <button id="f-reset" class="ghost">Reset</button>
       <span class="result-count" id="f-count"></span>
       <button id="f-export" class="ghost">Download CSV</button>
     </div>
+    <p class="footnote" id="f-cleared-note" hidden></p>
     <div class="table-wrap"><table id="table-faults"></table></div>
     <div class="pager" id="pager"></div>
   </section>
@@ -240,6 +258,10 @@
           A minority of closed records carry a real closure date; most do not.</li>
         <li>Faults sometimes drop out and come back between collections. Those are counted once and
           flagged, not double-counted as new.</li>
+        <li>The Faults tab switches between <strong>still open</strong> and <strong>cleared</strong>,
+          and cleared faults can be filtered by when they went. That is the way to see what a sudden
+          movement in the backlog actually consisted of — and to check how much of it Thames Water's
+          closed feed corroborates, which for a bulk departure is usually very little.</li>
       </ul>
 
       <h3>Reports, and how they link to faults</h3>

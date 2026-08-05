@@ -112,6 +112,11 @@ tell a repair from a cancellation.
 
 `snapshots` — one row per collection run, with per-source counts.
 
+`build_site` emits `web/data/cleared.json` alongside the open faults: every departure in the
+last 90 days as a browsable record, carrying the closure date and the closed-feed verdict where
+there is one. Open faults are a bounded set and cleared ones are not, hence the window; older
+departures stay in the database and in the change log.
+
 See [`collector/schema.sql`](collector/schema.sql).
 
 ## Reference data
@@ -174,8 +179,11 @@ These matter if you are going to quote the numbers at anyone.
 
 - **"Cleared" means "stopped appearing"**, not "confirmed fixed", unless the fault also
   turns up in the closed feed. Where it does, Thames Water's own `Completed`/`Canceled`
-  verdict is shown. Where it does not — currently about 40% of departures — we genuinely do
-  not know what happened, and the site says so rather than assuming a repair.
+  verdict is shown. Where it does not, we genuinely do not know what happened, and the site
+  says so rather than assuming a repair. The Faults tab lists cleared faults with that verdict
+  per record, filterable by clearance date — which is how to tell a working week's repairs from
+  a bulk disappearance. **The corroborated share is not stable**: it was about 60% before
+  2026-08-05, and 2.5% for the 4,272 faults that left in a single collection that evening.
 - **Time-to-fix is measured from Thames Water's own raised date** to the day the fault left
   the map. Faults already open when tracking began are included, so if anything the figure
   flatters them.

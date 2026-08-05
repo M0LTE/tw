@@ -304,3 +304,4 @@ td.rate { position: relative; min-width: 130px; }
   background: var(--surface-2); border-radius: 7px; font-size: 13.5px;
 }
 .linklist .when { color: var(--text-dim); font-size: 12.5px; margin-top: 2px; }
+.prose h3 { margin: 18px 0 4px; font-size: 13.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }

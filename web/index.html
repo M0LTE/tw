@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Thames Water fault tracker</title>
-<meta name="description" content="Independent daily tracking of every fault on Thames Water's public problem map — how many are open, how old they are, and how fast they get fixed.">
+<meta name="description" content="Independent twice-daily tracking of every fault on Thames Water's public problem map — how many are open, how old they are, and how fast they get fixed.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%92%A7%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
@@ -17,7 +17,7 @@
     <span class="brand-mark" aria-hidden="true">💧</span>
     <div>
       <h1>Thames Water fault tracker</h1>
-      <p class="tagline">Every fault on their public map, counted daily.</p>
+      <p class="tagline">Every fault on their public map, counted twice a day.</p>
     </div>
   </div>
   <div class="freshness">
@@ -197,44 +197,96 @@
         there is no record it was ever there.
       </p>
       <p>
-        This site takes a snapshot of that map every day and keeps the history. That makes it possible
-        to ask the questions the map cannot answer: is the backlog growing? How long does a leak
-        actually take to fix? Which towns wait longest?
+        This site snapshots that map twice a day and keeps the history. That makes it possible to ask
+        the questions the map cannot answer: is the backlog growing? How long does a leak actually
+        take to fix? How many faults have been open for over a year? Which areas wait longest?
       </p>
 
       <h2>Where the data comes from</h2>
       <p>
-        The map is an ArcGIS application. Its public feature layers —
-        <code>CleanWaterOpenWorkOrder</code>, <code>WasteWaterOpenWorkOrder</code> and the
-        pending-pins layer behind the "Leak" markers — are read directly, unchanged. Nothing
-        here is estimated or modelled: every number is a count of Thames Water's own published
-        records.
+        The map is an ArcGIS application, and its feature layers are public. Five are read directly
+        and unchanged. Nothing here is estimated or modelled: every number is a count of Thames
+        Water's own published records.
       </p>
+      <ul>
+        <li><strong>Open work orders</strong> — <code>CleanWaterOpenWorkOrder</code> and
+          <code>WasteWaterOpenWorkOrder</code>. Work Thames Water has scheduled and not yet finished.</li>
+        <li><strong>Closed work orders</strong> — <code>CleanWaterClosedWorkOrder</code> and
+          <code>WasteWaterClosedWorkOrder</code>. Work they have finished with, marked
+          <em>Completed</em> or <em>Canceled</em>.</li>
+        <li><strong>Public reports</strong> — the pending-pins layer behind the &ldquo;Leak&rdquo;
+          markers. What appears the moment somebody reports a problem, before any work order exists.</li>
+      </ul>
       <p>
-        <strong>Work orders and public reports are counted separately.</strong> A report is what
-        appears the moment someone reports a problem; a work order is what exists once Thames
-        Water schedules work. Thames Water keeps only about a week of reports, so one that never
-        becomes a work order vanishes from their map with no trace. Those are kept here.
+        <strong>Reports and work orders are counted separately</strong>, because they are different
+        things: a report is a member of the public saying something is wrong, a work order is Thames
+        Water scheduling work. Thames Water keeps only about a week of reports, so one that never
+        becomes a work order vanishes from their map with nothing to show it was ever made. Those are
+        kept here.
       </p>
 
       <h2>How to read it</h2>
+
+      <h3>Ages and outcomes</h3>
       <ul>
-        <li><strong>Age</strong> is measured from <code>WorkOrderRaisedDate</code>, Thames Water's own timestamp for when the work order was created.</li>
-        <li><strong>Cleared</strong> means a fault stopped appearing in the feed. That usually means it was fixed, but the feed does not say so explicitly — a work order can also be merged, cancelled or reclassified.</li>
-        <li><strong>Time to fix</strong> counts from the raised date to the day the fault left the map. Faults already open on the day tracking began are included, so this figure is if anything generous.</li>
-        <li>Faults sometimes reappear after dropping out for a day. Those are counted once and flagged, not double-counted.</li>
-        <li>A report leaving the map does not prove it became a work order. The two feeds share no reference number, so the link can only be inferred from place and timing. A report can also convert while its pin stays on the map, which is why the same address sometimes shows twice.</li>
-        <li>Where a public report and a work order share a street and postcode within a week of each other, each links to the other. That is an <strong>association</strong> inferred from address and timing, not a confirmed link — the two feeds share no reference number, and where more than one work order fits, all are shown.</li>
-        <li>Their map shows the <strong>case number</strong>; a fault also has a separate work order number. Both are searchable here.</li>
-        <li>&ldquo;Leak&rdquo; is Thames Water's label for the whole pending-pins layer rather than a classification of each report. Matching pins to work orders raised soon after at the same address, 98% are leak investigations, but a few become flooding or blockage work.</li>
-        <li>Work order times are published as UK local time labelled as UTC. We correct that on collection, so times here are genuinely UTC.</li>
+        <li><strong>Age</strong> is measured from <code>WorkOrderRaisedDate</code>, Thames Water's own
+          timestamp for when the work order was created.</li>
+        <li><strong>Cleared</strong> means a fault stopped appearing in the open feed. Where that fault
+          also turns up in the closed feed, Thames Water's own verdict is shown —
+          <em>Completed</em> or <em>Canceled</em>. Where it does not, we genuinely do not know what
+          happened, and the site says so rather than assuming a repair.</li>
+        <li><strong>Time to fix</strong> counts from the raised date to the day the fault left the map.
+          Faults already open when tracking began are included, so the figure is if anything generous.
+          A minority of closed records carry a real closure date; most do not.</li>
+        <li>Faults sometimes drop out and come back between collections. Those are counted once and
+          flagged, not double-counted as new.</li>
+      </ul>
+
+      <h3>Reports, and how they link to faults</h3>
+      <ul>
+        <li>Where a report and a work order share a street and postcode within a week of each other,
+          each links to the other. That is an <strong>association</strong> inferred from address and
+          timing — the two feeds share no reference number. Where more than one work order fits, all
+          are shown rather than one being picked.</li>
+        <li>A report leaving the map does not prove it became a work order, and a report can convert
+          while its pin stays on the map — which is why the same address sometimes shows twice on
+          Thames Water's map.</li>
+        <li>&ldquo;Leak&rdquo; is Thames Water's label for the whole pending-pins layer, not a
+          classification of each report; the feed carries no per-report problem type. Of reports that
+          match a work order raised soon after at the same address, about 95% are leak investigations,
+          but a few become flooding or blockage work.</li>
+      </ul>
+
+      <h3>Places</h3>
+      <ul>
+        <li>Areas are ranked by open faults <strong>per 10,000 households</strong>, using ONS Census
+          2021 household counts, because a raw count mostly ranks population.</li>
+        <li><strong>A low rate is not evidence of good performance.</strong> Thames Water supplies only
+          part of some local authorities, so faults are counted for their area while households are
+          counted for all of it. Normalising by households also does not adjust for network age, pipe
+          material or ground conditions.</li>
+      </ul>
+
+      <h3>Quirks of the source data</h3>
+      <ul>
+        <li>Their map shows the <strong>case number</strong>; a fault also has a separate work order
+          number. Both are searchable here.</li>
+        <li>A small number of records — about 1.4% of reports and 0.2% of work orders — are published
+          with no address at all: the source leaves street, town and postcode empty. They still carry
+          coordinates, so those are shown instead. Address-less reports cannot be matched to a work
+          order at all, which is one reason the report-to-fault links above are a floor and not a
+          conversion rate.</li>
+        <li>Work order times are published as UK local time labelled as UTC, which puts them an hour
+          out during British Summer Time. That is corrected on collection, so times here are genuinely
+          UTC.</li>
       </ul>
 
       <h2>Check the numbers yourself</h2>
       <p>
-        Every daily snapshot is committed to the repository as a compressed change log, and the
-        SQLite database is rebuilt from those files on every run — so any figure on this page can be
-        reproduced from the raw record.
+        Every collection is committed to the repository as a compressed change log, and the SQLite
+        database is rebuilt from those files on every run — so any figure on this page can be
+        reproduced from the raw record. The caveats above are in the README too, alongside the ones
+        that only matter if you are going to quote these numbers at someone.
       </p>
       <p class="about-links">
         <a id="link-repo" href="https://github.com/M0LTE/tw" target="_blank" rel="noopener">Source and data on GitHub</a>

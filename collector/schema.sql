@@ -165,5 +165,11 @@ CREATE TABLE IF NOT EXISTS snapshots (
     changed       INTEGER NOT NULL,
     resolved      INTEGER NOT NULL,
     reappeared    INTEGER NOT NULL,
-    source_counts TEXT NOT NULL   -- JSON object
+    source_counts TEXT NOT NULL,  -- JSON object
+    -- Set when the truncation guard refused this poll: JSON of kind -> the
+    -- fraction of known records that came back. Such a snapshot records what
+    -- the layers reported without applying any record change, so source_counts
+    -- and the fault table deliberately disagree. That disagreement is the
+    -- signal, not a defect: it is what a source-side purge looks like.
+    truncated     TEXT
 );

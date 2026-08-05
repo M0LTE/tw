@@ -358,6 +358,25 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
         "ORDER BY observed_at"
     ).fetchall()
 
+    # When the newest poll was refused by the truncation guard, the backlog on
+    # this site is the last figure we were willing to believe, not what the
+    # source is currently serving. Publish both so the page can say so: showing
+    # a stale backlog as though it were current would be exactly the kind of
+    # quiet wrongness this project exists to catch.
+    truncation = conn.execute(
+        "SELECT observed_at, truncated, source_counts FROM snapshots "
+        "WHERE truncated IS NOT NULL ORDER BY observed_at DESC LIMIT 1"
+    ).fetchone()
+    stale = None
+    if truncation and snapshots and truncation["observed_at"] == snapshots[-1]["observed_at"]:
+        counts = json.loads(truncation["source_counts"])
+        stale = {
+            "observed_at": truncation["observed_at"],
+            "retained": json.loads(truncation["truncated"]),
+            "source_open": sum(counts.get(s.key, 0) for s in SOURCES if s.kind == sources.WORK_ORDER),
+            "our_open": len(open_rows),
+        }
+
     return {
         "generated_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat(),
         "epoch": EPOCH.isoformat(),
@@ -372,6 +391,8 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
             "first_snapshot": first_snapshot,
             "latest_snapshot": snapshots[-1]["observed_at"] if snapshots else None,
         },
+        # Present only while the newest poll is one we refused to apply.
+        "truncated": stale,
         "age": {**_percentiles(ages), "buckets": dict(by_bucket)},
         "by_status": dict(by_status),
         "by_source": dict(by_source),

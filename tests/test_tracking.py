@@ -223,6 +223,47 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(b["is_open"], 1)
         self.assertIsNone(b["resolved_at"])
 
+    def test_a_truncated_poll_records_counts_without_touching_history(self):
+        """#21 — a source-side purge must be observable without being believed.
+
+        Two failure modes, both bad: applying the implied departures writes tens
+        of thousands of phantom closures, and discarding the poll loses the only
+        evidence the source moved at all. A truncated delta keeps the counts and
+        applies no record change, so the snapshot and the fault table disagree —
+        and that disagreement is the signal.
+        """
+        day0 = records(feature("A"), feature("B"), feature("C"), feature("D"))
+        self.poll(0, day0, {}, set())
+
+        # The source comes back with a quarter of what it had.
+        stamp = dt.datetime(2026, 1, 2, tzinfo=dt.timezone.utc).isoformat()
+        truncated = store.Delta(observed_at=stamp, source_counts={"waste": 1})
+        truncated.truncated = {"work_order": 0.25}
+        store.write_delta(self.deltas, truncated)
+
+        conn = self.replay()
+        open_now = conn.execute("SELECT count(*) FROM faults WHERE is_open = 1").fetchone()[0]
+        self.assertEqual(open_now, 4, "no fault may be closed on a truncated poll")
+        self.assertEqual(
+            conn.execute("SELECT count(*) FROM fault_events WHERE kind = 'resolved'").fetchone()[0],
+            0, "a truncated poll must not emit resolution events",
+        )
+
+        row = conn.execute("SELECT * FROM snapshots WHERE observed_at = ?", (stamp,)).fetchone()
+        conn.close()
+        self.assertIsNotNone(row, "the observation itself must survive")
+        self.assertEqual(json.loads(row["truncated"]), {"work_order": 0.25})
+        self.assertEqual(json.loads(row["source_counts"]), {"waste": 1},
+                         "what the layer actually reported is kept")
+
+    def test_a_truncated_delta_is_never_considered_empty(self):
+        # `is_empty` gates whether a delta is written at all; a counts-only
+        # observation has no record ops and would otherwise be dropped.
+        delta = store.Delta(observed_at="2026-01-02T00:00:00+00:00", source_counts={"waste": 1})
+        self.assertTrue(delta.is_empty())
+        delta.truncated = {"work_order": 0.25}
+        self.assertFalse(delta.is_empty())
+
     def test_reappearance_reopens_without_duplicating(self):
         day0 = records(feature("A"))
         self.poll(0, day0, {}, set())

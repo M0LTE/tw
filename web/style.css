@@ -314,3 +314,13 @@ td.rate { position: relative; min-width: 130px; }
 .verdict.cancelled { color: var(--text-dim); font-weight: 600; }
 .verdict.unknown { color: var(--text-dim); font-style: italic; cursor: help; }
 #f-cleared-note { margin: -4px 0 12px; max-width: none; }
+
+/* Shown when the newest poll was refused by the truncation guard. Amber rather
+   than red: nothing is broken here, the collector is doing its job. What is
+   wrong is the source, and the point is that the backlog shown is the last
+   figure we were willing to believe rather than what is being served now. */
+.banner {
+  padding: 14px 16px; border-radius: 10px; font-size: 14px; line-height: 1.55;
+  background: rgba(217, 143, 6, 0.12); border: 1px solid rgba(217, 143, 6, 0.45);
+}
+.banner strong { font-weight: 650; }

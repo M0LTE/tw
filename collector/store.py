@@ -65,6 +65,11 @@ class Delta:
     observed_at: str
     source_counts: dict[str, int] = field(default_factory=dict)
     kinds: dict[str, Change] = field(default_factory=dict)
+    # Per-kind retained fraction when the truncation guard refused this poll.
+    # A truncated delta carries what the layers *said* without applying a single
+    # record change: the counts are a real observation and worth keeping, while
+    # the implied departures are not trustworthy enough to write to history.
+    truncated: dict[str, float] = field(default_factory=dict)
 
     def for_kind(self, kind: str) -> Change:
         return self.kinds.setdefault(kind, Change())
@@ -74,6 +79,9 @@ class Delta:
         return sum(self.source_counts.values())
 
     def is_empty(self) -> bool:
+        # A truncated poll is never empty: the counts are the whole point of it.
+        if self.truncated:
+            return False
         return all(change.is_empty() for change in self.kinds.values())
 
     def tally(self) -> dict[str, dict[str, int]]:
@@ -105,6 +113,7 @@ def write_delta(root: Path, delta: Delta) -> Path:
                 "v": FORMAT_VERSION,
                 "observed_at": delta.observed_at,
                 "source_counts": delta.source_counts,
+                "truncated": delta.truncated,
             },
             sort_keys=True,
         )
@@ -261,6 +270,7 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
     observed_at = ""
     counts = {"appeared": 0, "changed": 0, "resolved": 0, "reappeared": 0}
     source_counts: dict[str, int] = {}
+    truncated: dict[str, float] = {}
 
     for entry in entries:
         op = entry.get("op")
@@ -268,6 +278,7 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
         if op == "meta":
             observed_at = entry["observed_at"]
             source_counts = entry.get("source_counts", {})
+            truncated = entry.get("truncated") or {}
             continue
 
         if not observed_at:
@@ -341,8 +352,8 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
     if observed_at:
         conn.execute(
             "INSERT OR REPLACE INTO snapshots "
-            "(observed_at, total, appeared, changed, resolved, reappeared, source_counts) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "(observed_at, total, appeared, changed, resolved, reappeared, source_counts, truncated) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 observed_at,
                 sum(source_counts.values()),
@@ -351,6 +362,7 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
                 counts["resolved"],
                 counts["reappeared"],
                 json.dumps(source_counts, sort_keys=True),
+                json.dumps(truncated, sort_keys=True) if truncated else None,
             ),
         )
 

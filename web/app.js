@@ -1126,6 +1126,33 @@ function wireUp() {
   $('#detail').addEventListener('click', (e) => { if (e.target.id === 'detail') $('#detail').close(); });
 }
 
+// The collector refuses to apply a poll in which most known records vanish,
+// because doing so would write tens of thousands of phantom closures. The
+// counts are still recorded. That leaves the site showing the last backlog we
+// were willing to believe rather than what the source is serving, so say so
+// plainly and give both numbers — a stale figure presented as current is
+// exactly the kind of quiet wrongness this project exists to catch.
+function renderTruncationBanner(info) {
+  const banner = $('#truncated-banner');
+  if (!info) { banner.hidden = true; return; }
+
+  const when = new Date(info.observed_at).toLocaleString('en-GB',
+    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const pct = Math.round((info.retained.work_order ?? 0) * 100);
+
+  banner.hidden = false;
+  banner.innerHTML =
+    `<strong>Thames Water's feed is currently serving far fewer work orders than it was.</strong> `
+    + `At ${escape(when)} their open layers returned `
+    + `<strong>${formatNumber(info.source_open)}</strong> work orders, against `
+    + `<strong>${formatNumber(info.our_open)}</strong> we had been tracking as open — `
+    + `${pct}% of known records came back. `
+    + 'That is too large a drop to read as repairs, so the collector recorded the counts but '
+    + '<strong>did not mark anything as cleared</strong>. '
+    + 'The figures below are therefore the last ones we were willing to believe, not what their '
+    + 'map is showing right now. They will catch up on their own if the feed recovers.';
+}
+
 // ── Boot ────────────────────────────────────────────────────────
 
 async function main() {
@@ -1152,6 +1179,8 @@ async function main() {
     state.latest = cleared ? cleared.latest : null;
     if (!state.cleared.length) $('#f-mode').hidden = true;
     syncModeUI();
+
+    renderTruncationBanner(summary.truncated);
 
     const collected = summary.totals.latest_snapshot;
     $('#freshness-value').textContent = collected

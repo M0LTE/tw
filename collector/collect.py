@@ -148,16 +148,41 @@ def main(argv: list[str] | None = None) -> int:
         if before:
             retained = len(set(before) & set(live[kind])) / len(before)
             if retained < MIN_RETAINED_FRACTION and not args.force:
+                delta.truncated[kind] = round(retained, 4)
                 log.error(
-                    "only %.1f%% of the %d current %s records came back; refusing to write a "
-                    "delta (re-run with --force if the drop is genuine)",
+                    "only %.1f%% of the %d current %s records came back",
                     retained * 100,
                     len(before),
                     kind,
                 )
-                conn.close()
-                return 1
-        classify(delta.for_kind(kind), live[kind], before, known[kind])
+
+    # A truncated poll writes the counts and nothing else. Applying the implied
+    # departures would record tens of thousands of phantom closures; discarding
+    # the run entirely would lose the only evidence that the source moved, which
+    # is exactly what happened while the clean and waste layers were collapsing
+    # on 2026-08-05 (#21). The counts are a real observation; the departures they
+    # imply are not trustworthy, so we keep the first and refuse the second.
+    if delta.truncated:
+        log.error(
+            "refusing to apply record changes for %s; writing a counts-only "
+            "observation instead (re-run with --force if the drop is genuine)",
+            ", ".join(sorted(delta.truncated)),
+        )
+        delta.kinds.clear()
+        path = store.write_delta(args.deltas, delta)
+        log.info("wrote %s (counts only)", path.relative_to(ROOT))
+        conn.close()
+        conn = store.rebuild(args.db, args.deltas)
+        conn.close()
+        print(json.dumps({
+            "observed_at": observed_at,
+            "truncated": delta.truncated,
+            "source_counts": delta.source_counts,
+        }))
+        return 0
+
+    for kind, spec in store.SPECS.items():
+        classify(delta.for_kind(kind), live[kind], previous[kind], known[kind])
 
     for kind, tally in delta.tally().items():
         log.info(

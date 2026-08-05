@@ -61,8 +61,14 @@ jobs:
           fi
           git commit -m "Snapshot $(date -u +%Y-%m-%dT%H:%MZ): $(jq -r '
             def m(k): .changes[k] // {appeared:0,resolved:0};
-            "\(.open) faults (+\(m("work_order").appeared)/-\(m("work_order").resolved)), " +
-            "\(.reports) reports (+\(m("report").appeared)/-\(m("report").resolved))"
+            if .truncated then
+              "source truncated (" + ([.truncated | to_entries[]
+                | "\(.key) \((.value * 100) | floor)% retained"] | join(", "))
+              + "), counts only — no record changes applied"
+            else
+              "\(.open) faults (+\(m("work_order").appeared)/-\(m("work_order").resolved)), " +
+              "\(.reports) reports (+\(m("report").appeared)/-\(m("report").resolved))"
+            end
           ' /tmp/summary.json)"
           # Another run may have pushed while we were collecting.
           for attempt in 1 2 3 4; do

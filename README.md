@@ -5,7 +5,7 @@ Thames Water publishes a [map of current problems](https://www.thameswater.co.uk
 two years looks exactly like one raised this morning, and once a pin disappears there is no
 record it was ever there.
 
-This project snapshots that map every day and keeps the history, so you can ask the
+This project snapshots that map every hour and keeps the history, so you can ask the
 questions the map cannot answer:
 
 - Is the backlog growing or shrinking?
@@ -36,15 +36,16 @@ ArcGIS feature layers  ──▶  collector/collect.py  ──▶  data/deltas/*
                                                                           GitHub Pages
 ```
 
-A twice-daily GitHub Action polls the feeds, appends a change log entry, rebuilds the database
-and republishes the site.
+An hourly GitHub Action polls the feeds, appends a change log entry, rebuilds the database
+and republishes the site. A poll that finds nothing changed commits nothing and deploys nothing.
 
-### Why a change log rather than daily database commits
+### Why a change log rather than snapshot database commits
 
-Each poll returns ~20,000 records, about 22 MB of JSON. Committing that daily would add
-gigabytes to git within a year. Instead each run commits only what *changed*: new faults in
+Each poll returns ~20,000 records, about 22 MB of JSON. Committing that every hour would add
+terabytes to git within a year. Instead each run commits only what *changed*: new faults in
 full, changed faults as a patch of the changed fields, and a tombstone for faults that
-dropped out of the feed. In practice that is **40–50 KB a day**.
+dropped out of the feed. Delta size tracks observed change rather than poll count, so hourly
+collection costs roughly **30 MB a year**, not twelve times the daily figure.
 
 `data/faults.db` is therefore a derived artefact, rebuilt from the change log on every run
 and never committed. The upshot is that every figure on the site is reproducible from the
@@ -78,7 +79,7 @@ When someone reports a problem it appears on the map immediately as a pin the ap
 labels **"Leak"** — before any work order exists. Those pins have no reference number and no
 repair status, and **Thames Water keeps only a rolling ~7 days of them**. A report that never
 becomes a work order therefore disappears from the public record entirely, with nothing to
-show it was ever made. Daily collection is the only way to see how many reports actually
+show it was ever made. Regular collection is the only way to see how many reports actually
 turn into work.
 
 They live in their own `reports` table rather than in `faults`: a report has no status and
@@ -96,14 +97,19 @@ bulletins, neither of which is a fault.
 ## Data model
 
 `faults` — one row per work order ever seen, holding Thames Water's own fields plus our
-observations: `first_seen_at`, `last_seen_at`, `resolved_at`, `is_open`, `reappearances`.
+observations: `first_seen_at`, `last_changed_at`, `resolved_at`, `is_open`, `reappearances`.
 
 `fault_events` — every observed change: `appeared`, `changed` (with field, old and new
 value), `resolved`, `reappeared`. This is what drives the per-fault timeline.
 
 `reports` — one row per public report ever seen, with `reported_at` (Thames Water's own
-timestamp), `first_seen_at`, `last_seen_at` and `disappeared_at`. Because the source keeps
+timestamp), `first_seen_at`, `last_changed_at` and `disappeared_at`. Because the source keeps
 only ~7 days, `disappeared_at` is the record that a report existed at all.
+
+There is deliberately no "last seen" column. An unchanged record emits no change log entry —
+that is the point of the delta design — so such a column could only ever record the last
+*change*, which is what `last_changed_at` honestly says. Presence is already implied: a record
+is live in every snapshot from `first_seen_at` until it resolves or disappears.
 
 `closed_faults` — work orders Thames Water publishes as finished, carrying a
 `WorkOrderStatus` of `Completed` or `Canceled`. Kept apart from `faults` so that table stays
@@ -170,8 +176,12 @@ python -m collector.checks   # leak-label proportion, link rate, address-less re
    **Actions → Collect faults → Run workflow** to trigger it by hand.
 3. The workflow needs no secrets — it uses the built-in `GITHUB_TOKEN`.
 
-The workflow runs at 06:15 and 18:15 UTC. It runs the tests first, and refuses to write a delta
-if the poll looks truncated (see below), so a bad day at the source cannot corrupt history.
+The workflow runs at quarter past every hour. It runs the tests first, and refuses to write a delta
+if the poll looks truncated (see below), so a bad hour at the source cannot corrupt history.
+
+Hourly rather than daily because resolution not collected is gone for good, while bytes are cheap:
+a run is 23 requests and under two minutes. Twice-daily collection could not tell whether the
+2026-08-05 departure of 4,272 faults was a single purge or a bleed across the day.
 
 ## Caveats
 

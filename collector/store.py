@@ -285,9 +285,9 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
             record = entry["f"]
             values = [record.get(c) for c in columns]
             conn.execute(
-                f"INSERT INTO {spec.table} (id, {', '.join(columns)}, first_seen_at, last_seen_at, {spec.live_column}) "
+                f"INSERT INTO {spec.table} (id, {', '.join(columns)}, first_seen_at, last_changed_at, {spec.live_column}) "
                 f"VALUES (?, {', '.join('?' * len(columns))}, ?, ?, 1) "
-                "ON CONFLICT(id) DO UPDATE SET last_seen_at = excluded.last_seen_at",
+                "ON CONFLICT(id) DO UPDATE SET last_changed_at = excluded.last_changed_at",
                 [record_id, *values, observed_at, observed_at],
             )
             if op == "back":
@@ -295,7 +295,7 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
                 # reopened, or it briefly dropped out of the feed.
                 conn.execute(
                     f"UPDATE {spec.table} SET {spec.live_column} = 1, {spec.gone_column} = NULL, "
-                    "reappearances = reappearances + 1, last_seen_at = ?, "
+                    "reappearances = reappearances + 1, last_changed_at = ?, "
                     + ", ".join(f"{c} = ?" for c in columns)
                     + " WHERE id = ?",
                     [observed_at, *values, record_id],
@@ -313,7 +313,7 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
             ).fetchone()
             assignments = ", ".join(f"{k} = ?" for k in patch)
             conn.execute(
-                f"UPDATE {spec.table} SET {assignments}, last_seen_at = ? WHERE id = ?",
+                f"UPDATE {spec.table} SET {assignments}, last_changed_at = ? WHERE id = ?",
                 [*patch.values(), observed_at, record_id],
             )
             for key, value in patch.items():

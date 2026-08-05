@@ -47,6 +47,20 @@ CLEARED_WINDOW_DAYS = 90
 AGE_BUCKETS = (1, 7, 30, 90, 180, 365, 730)
 
 
+def epoch_seconds(value: str | None) -> int | None:
+    """Whole seconds since the Unix epoch, our encoding for a precise moment.
+
+    Used where the time of day carries information. Collection is hourly, so a
+    clearance is located to about an hour; a day index would throw that away.
+    """
+    if not value:
+        return None
+    try:
+        return int(dt.datetime.fromisoformat(value).timestamp())
+    except ValueError:
+        return None
+
+
 def day_index(value: str | None) -> int | None:
     """Days since EPOCH, our compact date encoding."""
     if not value:
@@ -161,7 +175,7 @@ def cleared_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
     status, journey, city, source, work_type, priority, verdict = (Dictionary() for _ in range(7))
     cols: dict[str, list] = {k: [] for k in
                              ("id", "wo", "cn", "s", "j", "w", "p", "c", "n", "pc", "st",
-                              "r", "d", "v", "lon", "lat")}
+                              "r", "t", "v", "lon", "lat")}
 
     cutoff = (today - dt.timedelta(days=CLEARED_WINDOW_DAYS)).isoformat()
     rows = conn.execute(
@@ -186,14 +200,20 @@ def cleared_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
         cols["pc"].append(row["postcode"])
         cols["st"].append(row["street"])
         cols["r"].append(day_index(row["raised_at"]))
-        cols["d"].append(day_index(row["resolved_at"]))
+        cols["t"].append(epoch_seconds(row["resolved_at"]))
         cols["v"].append(verdict(row["verdict"]))
         cols["lon"].append(None if row["lon"] is None else round(row["lon"], 5))
         cols["lat"].append(None if row["lat"] is None else round(row["lat"], 5))
 
+    latest = conn.execute("SELECT max(observed_at) FROM snapshots").fetchone()[0]
     return {
         "epoch": EPOCH.isoformat(),
         "today": (today - EPOCH).days,
+        # The moment the newest collection ran. Every "in the last N hours"
+        # window counts back from here: the site is only ever as current as its
+        # last poll, and counting from the reader's clock would silently drop
+        # the newest departures for anyone loading between runs.
+        "latest": epoch_seconds(latest),
         "window_days": CLEARED_WINDOW_DAYS,
         "dict": {
             "status": status.values,

@@ -183,7 +183,7 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(a["status"], "Repair Underway")
         self.assertEqual(a["is_open"], 1)
         self.assertEqual(a["first_seen_at"][:10], "2026-01-01")
-        self.assertEqual(a["last_seen_at"][:10], "2026-01-03")
+        self.assertEqual(a["last_changed_at"][:10], "2026-01-03")
 
         b = conn.execute("SELECT * FROM faults WHERE id = 'B'").fetchone()
         self.assertEqual(b["is_open"], 0)
@@ -195,6 +195,33 @@ class ReplayTests(unittest.TestCase):
         ).fetchall()
         self.assertEqual([r[0] for r in statuses], ["Reported", "Investigation", "Repair Underway"])
         conn.close()
+
+    def test_last_changed_at_does_not_track_mere_presence(self):
+        """#22 — the column means what its name says, and nothing more.
+
+        An unchanged record emits no delta entry, so `last_changed_at` cannot
+        advance for one. That is correct, not a bug to be "fixed": maintaining a
+        true last-seen would mean rewriting every live row every collection for a
+        fact the schema already implies. This test exists so the semantics are
+        pinned rather than rediscovered.
+        """
+        day0 = records(feature("A"), feature("B"))
+        self.poll(0, day0, {}, set())
+        # A changes on day 1; B is present and untouched throughout.
+        day1 = records(feature("A", WorkOrderStatus="Investigation"), feature("B"))
+        self.poll(1, day1, day0, {"A", "B"})
+        self.poll(2, day1, day1, {"A", "B"})
+
+        conn = self.replay()
+        a, b = (conn.execute("SELECT * FROM faults WHERE id = ?", (i,)).fetchone() for i in ("A", "B"))
+        conn.close()
+
+        self.assertEqual(a["last_changed_at"][:10], "2026-01-02", "A last changed on day 1")
+        self.assertEqual(b["last_changed_at"][:10], "2026-01-01",
+                         "B was present on day 2 but unchanged since day 0")
+        # Presence is still recoverable: B is live, so it was in every snapshot.
+        self.assertEqual(b["is_open"], 1)
+        self.assertIsNone(b["resolved_at"])
 
     def test_reappearance_reopens_without_duplicating(self):
         day0 = records(feature("A"))
@@ -219,7 +246,7 @@ class ReplayTests(unittest.TestCase):
         def fingerprint():
             conn = self.replay()
             rows = conn.execute(
-                "SELECT id, status, is_open, resolved_at, first_seen_at, last_seen_at "
+                "SELECT id, status, is_open, resolved_at, first_seen_at, last_changed_at "
                 "FROM faults ORDER BY id"
             ).fetchall()
             events = conn.execute(
@@ -639,6 +666,26 @@ class ClosureOutcomeTests(unittest.TestCase):
         self.assertNotIn("C", verdicts, "a still-open fault must not appear")
         self.assertNotIn("Z", verdicts, "a closed-only record was never observed departing")
 
+    def test_cleared_payload_locates_a_departure_to_the_collection_not_the_day(self):
+        """#23 — hourly collection is pointless if the payload rounds to days."""
+        from collector import build_site
+
+        conn = sqlite3.connect(self.db)
+        conn.execute("UPDATE faults SET resolved_at='2026-01-02T18:47:59+00:00' WHERE id='A'")
+        conn.commit()
+        conn.row_factory = sqlite3.Row
+        payload = build_site.cleared_faults(conn, dt.date(2026, 1, 2))
+        conn.close()
+
+        moment = payload["cols"]["t"][payload["cols"]["id"].index("A")]
+        self.assertEqual(
+            dt.datetime.fromtimestamp(moment, dt.timezone.utc).isoformat(),
+            "2026-01-02T18:47:59+00:00",
+            "the time of day must survive into the payload",
+        )
+        # "In the last N hours" counts back from here, so it has to be present.
+        self.assertIsNotNone(payload["latest"], "the newest collection moment must be published")
+
     def test_cleared_payload_respects_its_retention_window(self):
         from collector import build_site
 
@@ -724,7 +771,7 @@ class CrossLinkTests(unittest.TestCase):
         conn = sqlite3.connect(self.db)
         conn.execute(
             "INSERT INTO faults (id, source, street, postcode, raised_at, status,"
-            " first_seen_at, last_seen_at, is_open) VALUES"
+            " first_seen_at, last_changed_at, is_open) VALUES"
             " ('TWIN','waste','3 MANDEVILLE CLOSE','RG30 4JT','2026-01-03T09:00:00+00:00',"
             " 'Reported','2026-01-01T00:00:00+00:00','2026-01-01T00:00:00+00:00',1)"
         )

@@ -1,14 +1,20 @@
 name: Collect faults
 
-# Takes a twice-daily snapshot of Thames Water's public fault map and commits the
+# Takes an hourly snapshot of Thames Water's public fault map and commits the
 # change log, then asks deploy.yml to republish. Collection and publishing are
 # separate workflows so either can happen without the other: a UI fix ships by
 # being merged, and a snapshot ships without needing a code change.
 #
+# Hourly rather than twice daily because resolution not collected is gone for
+# good, while bytes are cheap: a run is 23 requests and under two minutes, and a
+# poll that finds nothing changed commits nothing and deploys nothing. Twice
+# daily could not tell whether the 2026-08-05 departure of 4,272 faults was one
+# purge or a bleed across the day (#21, #23).
+#
 # Note: GitHub only runs `schedule` triggers on the repository's default branch.
 on:
   schedule:
-    - cron: '15 6,18 * * *'
+    - cron: '15 * * * *'
   workflow_dispatch:
     inputs:
       force:
@@ -16,7 +22,9 @@ on:
         type: boolean
         default: false
 
-# Never let two collections race: they would both append a delta for the same day.
+# Never let two collections race: they would both diff against the same previous
+# state and double-count. Matters more hourly than it did twice daily, since a
+# slow run and the next schedule can now overlap.
 concurrency:
   group: collect
   cancel-in-progress: false

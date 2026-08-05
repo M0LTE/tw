@@ -41,8 +41,14 @@ CREATE TABLE IF NOT EXISTS faults (
     show_on_map             TEXT,
 
     -- Our observations.
+    --
+    -- There is deliberately no "last seen" column. An unchanged record produces
+    -- no change log entry — that is the whole point of the delta design — so any
+    -- such column would only ever record the last *change*, which is what
+    -- last_changed_at honestly says. "Was it in snapshot N?" is already implied:
+    -- a record is live in every snapshot from first_seen_at until resolved_at.
     first_seen_at           TEXT NOT NULL,  -- first snapshot containing it
-    last_seen_at            TEXT NOT NULL,  -- most recent snapshot containing it
+    last_changed_at         TEXT NOT NULL,  -- most recent snapshot in which it appeared or changed
     resolved_at             TEXT,           -- snapshot at which it vanished from the feed
     is_open                 INTEGER NOT NULL DEFAULT 1,
     reappearances           INTEGER NOT NULL DEFAULT 0
@@ -108,7 +114,7 @@ CREATE TABLE IF NOT EXISTS closed_faults (
 
     -- Our observations of the closed feed.
     first_seen_at  TEXT NOT NULL,
-    last_seen_at   TEXT NOT NULL,
+    last_changed_at TEXT NOT NULL,  -- appeared or changed, not merely present
     delisted_at    TEXT,           -- aged out of the rolling window
     is_listed      INTEGER NOT NULL DEFAULT 1,
     reappearances  INTEGER NOT NULL DEFAULT 0
@@ -141,7 +147,7 @@ CREATE TABLE IF NOT EXISTS reports (
     edited_at      TEXT,
 
     first_seen_at  TEXT NOT NULL,
-    last_seen_at   TEXT NOT NULL,
+    last_changed_at TEXT NOT NULL,  -- appeared or changed, not merely present
     disappeared_at TEXT,               -- snapshot at which it left the feed
     is_current     INTEGER NOT NULL DEFAULT 1,
     reappearances  INTEGER NOT NULL DEFAULT 0

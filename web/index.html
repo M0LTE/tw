@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Thames Water fault tracker</title>
-<meta name="description" content="Independent twice-daily tracking of every fault on Thames Water's public problem map — how many are open, how old they are, and how fast they get fixed.">
+<meta name="description" content="Independent hourly tracking of every fault on Thames Water's public problem map — how many are open, how old they are, and how fast they get fixed.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%92%A7%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
@@ -17,7 +17,7 @@
     <span class="brand-mark" aria-hidden="true">💧</span>
     <div>
       <h1>Thames Water fault tracker</h1>
-      <p class="tagline">Every fault on their public map, counted twice a day.</p>
+      <p class="tagline">Every fault on their public map, counted every hour.</p>
     </div>
   </div>
   <div class="freshness">
@@ -131,12 +131,15 @@
         <option value="365">Over 1 year</option>
         <option value="730">Over 2 years</option>
       </select>
+      <!-- Values are hours, counted back from the latest collection. -->
       <select id="f-cleared" hidden>
         <option value="">Cleared any time</option>
-        <option value="0">Cleared today</option>
-        <option value="1">Cleared in last 2 days</option>
-        <option value="7">Cleared in last 7 days</option>
-        <option value="30">Cleared in last 30 days</option>
+        <option value="1">In the last hour</option>
+        <option value="6">In the last 6 hours</option>
+        <option value="24">In the last 24 hours</option>
+        <option value="72">In the last 3 days</option>
+        <option value="168">In the last 7 days</option>
+        <option value="720">In the last 30 days</option>
       </select>
       <select id="f-verdict" hidden>
         <option value="">Any outcome</option>
@@ -215,7 +218,7 @@
         there is no record it was ever there.
       </p>
       <p>
-        This site snapshots that map twice a day and keeps the history. That makes it possible to ask
+        This site snapshots that map every hour and keeps the history. That makes it possible to ask
         the questions the map cannot answer: is the backlog growing? How long does a leak actually
         take to fix? How many faults have been open for over a year? Which areas wait longest?
       </p>
@@ -259,9 +262,12 @@
         <li>Faults sometimes drop out and come back between collections. Those are counted once and
           flagged, not double-counted as new.</li>
         <li>The Faults tab switches between <strong>still open</strong> and <strong>cleared</strong>,
-          and cleared faults can be filtered by when they went. That is the way to see what a sudden
-          movement in the backlog actually consisted of — and to check how much of it Thames Water's
-          closed feed corroborates, which for a bulk departure is usually very little.</li>
+          and cleared faults can be filtered by when they went, down to the last hour. That is the way
+          to see what a sudden movement in the backlog actually consisted of — and to check how much of
+          it Thames Water's closed feed corroborates, which for a bulk departure is usually very little.</li>
+        <li>A clearance time is the collection that <em>first found the fault missing</em>, not the
+          moment it left. Collection is hourly, so a departure is placed within about an hour; it is
+          not exact, and the site does not pretend otherwise.</li>
       </ul>
 
       <h3>Reports, and how they link to faults</h3>

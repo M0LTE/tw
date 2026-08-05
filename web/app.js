@@ -18,6 +18,7 @@ const state = {
   faults: [],
   cleared: [],
   clearedWindow: null,
+  latest: null,
   history: {},
   epoch: null,
   today: 0,
@@ -194,11 +195,20 @@ function expand(open) {
 // they went and Thames Water's own verdict where the closed feed carries one.
 // `age` is deliberately time-to-clear rather than age-now, so sorting by it
 // answers "what sat there longest before it went".
+// Days since the payload's epoch, from an absolute moment. Used to keep the
+// "Took" figure in whole days while `cleared` itself stays precise.
+function dayOf(epochSeconds) {
+  if (epochSeconds === null || epochSeconds === undefined) return null;
+  const epochDay = Math.floor(Date.parse(state.epoch + 'T00:00:00Z') / 86400000);
+  return Math.floor(epochSeconds / 86400) - epochDay;
+}
+
 function expandCleared(data) {
   const { dict, cols } = data;
   return cols.id.map((id, i) => {
     const raised = cols.r[i];
-    const cleared = cols.d[i];
+    const clearedAt = cols.t[i];
+    const cleared = dayOf(clearedAt);
     const row = {
       i,
       id,
@@ -215,6 +225,7 @@ function expandCleared(data) {
       street: cols.st[i],
       raised,
       cleared,
+      clearedAt,
       verdict: dict.verdict[cols.v[i]] || null,
       age: raised === null || cleared === null ? null : cleared - raised,
       lon: cols.lon[i],
@@ -417,7 +428,9 @@ function syncModeUI() {
     note.innerHTML = 'A fault is <strong>cleared</strong> when it stops appearing in the open feed. '
       + 'Where Thames Water\u2019s closed feed also carries it, their own Completed or Cancelled verdict is shown; '
       + 'where it does not, <strong>nothing confirms what happened</strong> \u2014 a bulk disappearance is not evidence of bulk repair. '
-      + `Covers the last ${state.clearedWindow || 90} days of departures.`;
+      + `Covers the last ${state.clearedWindow || 90} days of departures. `
+      + 'Times are the collection that first found the fault missing, so a departure is placed '
+      + 'within about an hour \u2014 not to the minute it actually went.';
   }
 }
 
@@ -426,9 +439,13 @@ function applyFilters() {
   const needle = f.search.trim().toLowerCase();
   const minAge = f.minAge ? Number(f.minAge) : null;
 
-  // "Cleared within N days" counts back from the latest snapshot, not from the
-  // browser's clock: the site is only ever as current as the last collection.
-  const within = f.clearedWithin === '' ? null : Number(f.clearedWithin);
+  // "Cleared within N hours" counts back from the latest collection, not from
+  // the browser's clock: the site is only ever as current as its last poll, and
+  // counting from local time would silently drop the newest departures for
+  // anyone loading the page between runs.
+  const withinHours = f.clearedWithin === '' ? null : Number(f.clearedWithin);
+  const floor = withinHours === null || state.latest === null
+    ? null : state.latest - withinHours * 3600;
 
   state.filtered = rowsForMode().filter((x) => {
     if (f.source && x.source !== f.source) return false;
@@ -437,7 +454,7 @@ function applyFilters() {
     if (minAge !== null && !(x.age > minAge)) return false;
     if (needle && !x.haystack.includes(needle)) return false;
     if (state.mode === 'cleared') {
-      if (within !== null && !(x.cleared !== null && x.cleared >= state.today - within)) return false;
+      if (floor !== null && !(x.clearedAt !== null && x.clearedAt >= floor)) return false;
       if (f.verdict === '_none' && x.verdict) return false;
       if (f.verdict && f.verdict !== '_none' && x.verdict !== f.verdict) return false;
     }
@@ -456,6 +473,17 @@ function applyFilters() {
 
   state.page = 0;
   renderFaults();
+}
+
+// Date on top, time beneath. `resolved_at` is the moment of the first
+// collection the fault was *missing* from, not the moment it left — hourly
+// polling makes that good to about an hour, not exact, so the time is shown
+// quietly rather than as a headline.
+function clearedCell(x) {
+  if (x.clearedAt === null || x.clearedAt === undefined) return '—';
+  const at = new Date(x.clearedAt * 1000);
+  return `${escape(formatDate(x.cleared))}`
+    + `<div class="when">${escape(at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))}</div>`;
 }
 
 // Thames Water's own verdict, or the honest absence of one. A cleared fault
@@ -484,7 +512,7 @@ const OPEN_COLUMNS = [
 ];
 
 const CLEARED_COLUMNS = [
-  { key: 'cleared', label: 'Cleared', render: (x) => formatDate(x.cleared) },
+  { key: 'clearedAt', label: 'Cleared', render: (x) => clearedCell(x) },
   { key: 'verdict', label: 'Outcome', render: verdictCell },
   { key: 'raised', label: 'Raised', render: (x) => formatDate(x.raised) },
   { key: 'age', label: 'Took', cls: 'num', render: (x) => `<span class="age age-${ageClass(x.age)}">${formatAge(x.age)}</span>` },
@@ -575,13 +603,14 @@ function exportCSV() {
   // `outcome` is empty rather than a guess when the closed feed has no record:
   // a blank is honest, "unknown" in a data column invites being read as a value.
   const header = cleared
-    ? ['work_order', 'case_number', 'raised', 'cleared', 'days_to_clear', 'outcome',
+    ? ['work_order', 'case_number', 'raised', 'cleared_utc', 'days_to_clear', 'outcome',
        'last_status', 'problem', 'work_type', 'street', 'postcode', 'town', 'network', 'lat', 'lon']
     : ['work_order', 'case_number', 'raised', 'age_days', 'status', 'problem', 'work_type',
        'street', 'postcode', 'town', 'network', 'lat', 'lon'];
 
   const rows = state.filtered.map((x) => (cleared
-    ? [x.workOrder, x.caseNumber, isoDay(x.raised), isoDay(x.cleared), x.age ?? '', x.verdict || '',
+    ? [x.workOrder, x.caseNumber, isoDay(x.raised),
+       x.clearedAt ? new Date(x.clearedAt * 1000).toISOString().replace('.000', '') : '', x.age ?? '', x.verdict || '',
        x.status, x.journey, x.workType, x.street, x.postcode, x.city, x.source, x.lat, x.lon]
     : [x.workOrder, x.caseNumber, isoDay(x.raised), x.age ?? '',
        x.status, x.journey, x.workType, x.street, x.postcode, x.city, x.source, x.lat, x.lon]));
@@ -609,7 +638,8 @@ function openDetail(fault) {
     ['Raised', formatDate(fault.raised)],
     ...(isCleared
       ? [
-        ['Left the map', formatDate(fault.cleared)],
+        ['Left the map', fault.clearedAt === null ? formatDate(fault.cleared)
+          : `${formatDate(fault.cleared)}, ${new Date(fault.clearedAt * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`],
         ['Took', fault.age === null ? null : `${formatNumber(fault.age)} days`],
         ['Outcome', fault.verdict === 'Canceled' ? 'Cancelled (Thames Water’s own record)'
           : fault.verdict ? `${fault.verdict} (Thames Water’s own record)`
@@ -634,7 +664,9 @@ function openDetail(fault) {
       ? `<li><strong>${escape(fault.status || 'Last seen')}</strong>
          <div class="when">last published status, ${escape(formatDate(fault.cleared))}</div></li>
          <li class="pending"><strong>Gone from the map</strong>
-         <div class="when">first collection it was missing from: ${escape(formatDate(fault.cleared))}</div></li>`
+         <div class="when">first collection it was missing from: ${escape(fault.clearedAt === null ? formatDate(fault.cleared)
+           : formatDate(fault.cleared) + ', ' + new Date(fault.clearedAt * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))}
+           — it left at some point in the hour before that</div></li>`
       : `<li class="pending"><strong>${escape(fault.status || 'Open')}</strong>
          <div class="when">status history begins once this fault changes</div></li>`;
 
@@ -1045,7 +1077,7 @@ function wireUp() {
     // Sorting by clearance date is the whole reason for this mode; age is the
     // right default for open faults. Reset rather than carry over, since
     // `cleared` is not a key the open rows even have.
-    state.sort = state.mode === 'cleared' ? { key: 'cleared', dir: -1 } : { key: 'age', dir: -1 };
+    state.sort = state.mode === 'cleared' ? { key: 'clearedAt', dir: -1 } : { key: 'age', dir: -1 };
     syncModeUI();
     applyFilters();
   });
@@ -1117,6 +1149,7 @@ async function main() {
     state.filtered = state.faults;
     state.cleared = cleared ? expandCleared(cleared) : [];
     state.clearedWindow = cleared ? cleared.window_days : null;
+    state.latest = cleared ? cleared.latest : null;
     if (!state.cleared.length) $('#f-mode').hidden = true;
     syncModeUI();
 

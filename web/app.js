@@ -192,12 +192,17 @@ function renderKPIs() {
   const buckets = s.age.buckets || {};
   const overYear = (buckets['<=730'] || 0) + (buckets['>730'] || 0);
 
-  // Net movement over the last week of snapshots: the single most telling number.
-  const flow = s.flow.slice(-7);
-  const raised = flow.reduce((a, f) => a + f.raised, 0);
-  const cleared = flow.reduce((a, f) => a + f.resolved, 0);
+  // Summed over a real time window. This was `flow.slice(-7)`, which meant seven
+  // days while rows were daily and seven snapshots once they were per-collection.
+  const WINDOW_DAYS = 7;
+  const newest = s.flow.length ? s.flow[s.flow.length - 1].t : 0;
+  const window = s.flow.filter((f) => f.t > newest - WINDOW_DAYS * 86400);
+  const raised = window.reduce((a, f) => a + f.raised, 0);
+  const cleared = window.reduce((a, f) => a + f.resolved, 0);
   const net = raised - cleared;
-  const haveFlow = s.flow.length >= 2;
+  const haveFlow = window.length >= 1;
+  const spanHours = s.backlog.length ? Math.max(1, Math.round((newest - s.backlog[0].t) / 3600)) : 0;
+  const shortSpan = spanHours < 24 * WINDOW_DAYS;
 
   const cards = [
     {
@@ -225,15 +230,16 @@ function renderKPIs() {
     },
     haveFlow
       ? {
-          label: 'Backlog, last 7 days',
+          label: shortSpan ? 'Backlog, since tracking began' : 'Backlog, last 7 days',
           value: `${net > 0 ? '+' : ''}${formatNumber(net)}`,
           tone: net > 0 ? 'bad' : 'good',
-          note: `${formatNumber(raised)} arrived, ${formatNumber(cleared)} cleared`,
+          note: `${formatNumber(raised)} arrived, ${formatNumber(cleared)} cleared` +
+                (shortSpan ? ` over ${formatNumber(spanHours)} hours` : ''),
         }
       : {
           label: 'Backlog trend',
-          value: '–',
-          note: 'Needs a second daily snapshot',
+          value: '-',
+          note: 'Needs a second collection',
         },
     s.reports && s.reports.current
       ? {
@@ -274,18 +280,26 @@ function renderOverview() {
   const s = state.summary;
   renderKPIs();
 
-  const series = s.sources.map((src) => ({
-    key: src.key,
-    label: src.label,
-    colour: sourceColour(src.key),
-    values: s.backlog.map((row) => ({ x: row.d, y: row[src.key] || 0 })),
-  }));
-  areaChart($('#chart-backlog'), series, { epoch: s.epoch, stacked: true });
-  $('#legend-backlog').innerHTML = series
-    .map((x) => `<span><span class="swatch" style="background:${x.colour}"></span>${x.label}</span>`)
-    .join('');
+  areaChart($('#chart-backlog'), [{
+    key: 'total',
+    label: 'Open faults',
+    colour: 'var(--accent)',
+    values: s.backlog.map((row) => ({ x: row.t, y: row.total })),
+  }], { stacked: false, zeroBased: false });
 
-  flowChart($('#chart-flow'), s.flow, { epoch: s.epoch });
+  const latest = s.backlog[s.backlog.length - 1] || {};
+  const first = s.backlog[0] || {};
+  const net = (latest.total || 0) - (first.total || 0);
+  $('#legend-backlog').innerHTML =
+    `<span>Now <strong>${formatNumber(latest.total)}</strong> open — ` +
+    // Only the open work-order networks contribute to the backlog; the closed
+    // and report feeds are in `sources` too and would show as zeros.
+    s.sources.filter((src) => src.key in latest)
+      .map((src) => `${formatNumber(latest[src.key])} ${escape(src.label.toLowerCase())}`).join(', ') +
+    `</span><span>Since tracking began <strong>${net > 0 ? '+' : ''}${formatNumber(net)}</strong></span>` +
+    `<span class="pinned">Vertical axis does not start at zero</span>`;
+
+  flowChart($('#chart-flow'), s.flow);
 
   // Buckets are exclusive ranges, so label them as ranges rather than "≤ n".
   const bucketLabels = [

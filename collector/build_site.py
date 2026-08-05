@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .model import STATUS_ORDER
+from . import sources
 from .sources import SOURCES
 
 log = logging.getLogger("build_site")
@@ -207,38 +208,34 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
         )
     places.sort(key=lambda p: -p["n"])
 
-    # Backlog over time, reconstructed from each fault's first_seen/resolved dates.
-    first_snapshot = conn.execute("SELECT min(observed_at) FROM snapshots").fetchone()[0]
-    start = dt.date.fromisoformat(first_snapshot[:10]) if first_snapshot else today
+    # Backlog and flow per *snapshot*, not per calendar day. Bucketing by day
+    # threw away half the resolution once collection went twice-daily, and left
+    # both charts in their empty state for a full day after tracking began.
+    # Timestamps are epoch seconds so unevenly spaced observations plot correctly.
+    observed = [r[0] for r in conn.execute("SELECT observed_at FROM snapshots ORDER BY observed_at")]
+    first_snapshot = observed[0] if observed else None
     spans = conn.execute("SELECT first_seen_at, resolved_at, source FROM faults").fetchall()
-    day_span = [(day_index(r["first_seen_at"]), day_index(r["resolved_at"]), r["source"]) for r in spans]
 
     backlog: list[dict] = []
-    keys = [s.key for s in SOURCES]
-    cursor = start
-    while cursor <= today:
-        d = (cursor - EPOCH).days
+    flow: list[dict] = []
+    keys = [s.key for s in SOURCES if s.kind == sources.WORK_ORDER]
+    for i, moment in enumerate(observed):
         counts = {k: 0 for k in keys}
-        for seen, resolved, source_key in day_span:
-            if seen is not None and seen <= d and (resolved is None or resolved > d):
-                counts[source_key] = counts.get(source_key, 0) + 1
-        backlog.append({"d": d, **counts})
-        cursor += dt.timedelta(days=1)
-
-    # Flow: how many appear vs disappear each day. The gap is the backlog trend.
-    flow_raised: collections.Counter[int] = collections.Counter()
-    flow_resolved: collections.Counter[int] = collections.Counter()
-    for seen, resolved, _ in day_span:
-        if seen is not None:
-            flow_raised[seen] += 1
-        if resolved is not None:
-            flow_resolved[resolved] += 1
-    # Skip the first snapshot: every fault "arrives" on the day tracking began,
-    # which is an artefact of starting to look, not 20,000 faults in one day.
-    flow = [
-        {"d": entry["d"], "raised": flow_raised.get(entry["d"], 0), "resolved": flow_resolved.get(entry["d"], 0)}
-        for entry in backlog[1:]
-    ]
+        for row in spans:
+            if row["first_seen_at"] <= moment and (
+                row["resolved_at"] is None or row["resolved_at"] > moment
+            ):
+                counts[row["source"]] = counts.get(row["source"], 0) + 1
+        stamp = int(dt.datetime.fromisoformat(moment).timestamp())
+        backlog.append({"t": stamp, "total": sum(counts.values()), **counts})
+        # The first snapshot is everything arriving at once, which is an artefact
+        # of starting to look rather than a day's worth of faults.
+        if i:
+            flow.append({
+                "t": stamp,
+                "raised": sum(1 for r in spans if r["first_seen_at"] == moment),
+                "resolved": sum(1 for r in spans if r["resolved_at"] == moment),
+            })
 
     # Time to resolution, for faults we watched from start to finish.
     cutoff = (today - dt.timedelta(days=RESOLVED_WINDOW_DAYS)).isoformat()
@@ -295,6 +292,7 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
         "places": places[:200],
         "backlog": backlog,
         "flow": flow,
+        "snapshot_times": [int(dt.datetime.fromisoformat(o).timestamp()) for o in observed],
         "resolution": {
             "window_days": RESOLVED_WINDOW_DAYS,
             "n": len(resolution_all),

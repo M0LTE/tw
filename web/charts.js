@@ -30,6 +30,14 @@ function anchorFor(index, count) {
   return 'middle';
 }
 
+// Observations are minutes to months apart, so the label granularity follows
+// the span being shown rather than being fixed.
+export function formatMoment(epochSeconds, spanSeconds) {
+  const d = new Date(epochSeconds * 1000);
+  if (spanSeconds > 5 * 86400) return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 export function formatNumber(n) {
   if (n === null || n === undefined || Number.isNaN(n)) return '–';
   return n.toLocaleString('en-GB', { maximumFractionDigits: Math.abs(n) < 10 ? 1 : 0 });
@@ -48,7 +56,7 @@ function emptyState(container, message) {
  * Stacked area / line chart over a day axis.
  * series: [{ key, label, colour, values: [{x, y}] }]
  */
-export function areaChart(container, series, { epoch, stacked = true, yLabel = '', minPoints = 2 } = {}) {
+export function areaChart(container, series, { stacked = true, yLabel = '', minPoints = 2, zeroBased = true } = {}) {
   const points = Math.max(...series.map((s) => s.values.length), 0);
   if (points < minPoints) {
     emptyState(container, 'Not enough history yet — this chart fills in as daily snapshots accumulate.');
@@ -72,23 +80,30 @@ export function areaChart(container, series, { epoch, stacked = true, yLabel = '
       stackTops[si][i] = running[i];
     });
   });
-  const yMax = Math.max(1, ...stackTops.flat());
+  // A backlog moving 1% is invisible against a zero baseline, so a level chart
+  // fits the axis to its data. Only safe because these are lines: a truncated
+  // baseline under stacked fills would misrepresent the areas.
+  const flat = stackTops.flat();
+  const dataMax = Math.max(...flat);
+  const dataMin = Math.min(...flat);
+  const padding = Math.max(1, (dataMax - dataMin) * 0.15);
+  const yMax = zeroBased ? Math.max(1, dataMax) : dataMax + padding;
+  const yMin = zeroBased ? 0 : Math.max(0, dataMin - padding);
 
   const x = (v) => pad.left + ((v - xMin) / Math.max(1, xMax - xMin)) * (W - pad.left - pad.right);
-  const y = (v) => H - pad.bottom - (v / yMax) * (H - pad.top - pad.bottom);
+  const y = (v) => H - pad.bottom - ((v - yMin) / Math.max(1, yMax - yMin)) * (H - pad.top - pad.bottom);
 
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart' });
 
-  for (const tick of niceTicks(0, yMax)) {
+  for (const tick of niceTicks(yMin, yMax)) {
     svg.append(el('line', { x1: pad.left, x2: W - pad.right, y1: y(tick), y2: y(tick), class: 'grid' }));
     svg.append(el('text', { x: pad.left - 8, y: y(tick) + 4, class: 'axis', 'text-anchor': 'end' }, formatNumber(tick)));
   }
 
-  const dayToDate = (d) => new Date(Date.parse(epoch + 'T00:00:00Z') + d * 86400000);
   const xTickCount = Math.min(6, xs.length);
   for (let i = 0; i < xTickCount; i++) {
     const v = xMin + Math.round((i * (xMax - xMin)) / Math.max(1, xTickCount - 1));
-    const label = dayToDate(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const label = formatMoment(v, xMax - xMin);
     svg.append(el('text', { x: x(v), y: H - 8, class: 'axis', 'text-anchor': anchorFor(i, xTickCount) }, label));
   }
 
@@ -151,7 +166,7 @@ export function barChart(container, items, { horizontal = false, valueFormat = f
 }
 
 /** Two-series overlaid bars, for "raised vs resolved" per day. */
-export function flowChart(container, rows, { epoch } = {}) {
+export function flowChart(container, rows) {
   if (rows.length < 2) {
     emptyState(container, 'Needs at least two snapshots — come back tomorrow.');
     return;
@@ -175,19 +190,18 @@ export function flowChart(container, rows, { epoch } = {}) {
     svg.append(el('rect', { x: x0 + bw * 0.06, y: y(r.raised), width: w, height: y(0) - y(r.raised), fill: 'var(--c-raised)' }));
     svg.append(el('rect', { x: x0 + bw * 0.52, y: y(r.resolved), width: w, height: y(0) - y(r.resolved), fill: 'var(--c-resolved)' }));
     // Invisible full-height hit area so the whole column shows a tooltip.
-    const date = new Date(Date.parse(epoch + 'T00:00:00Z') + r.d * 86400000);
     const hit = el('rect', { x: x0, y: pad.top, width: bw, height: H - pad.top - pad.bottom, fill: 'transparent' });
-    hit.append(el('title', {}, `${date.toLocaleDateString('en-GB')}: ${r.raised} new, ${r.resolved} cleared`));
+    hit.append(el('title', {}, `${new Date(r.t * 1000).toLocaleString('en-GB')}: ${r.raised} new, ${r.resolved} cleared`));
     svg.append(hit);
   });
 
   const ticks = Math.min(6, rows.length);
   for (let i = 0; i < ticks; i++) {
     const idx = Math.round((i * (rows.length - 1)) / Math.max(1, ticks - 1));
-    const date = new Date(Date.parse(epoch + 'T00:00:00Z') + rows[idx].d * 86400000);
+    const span = rows[rows.length - 1].t - rows[0].t;
     svg.append(
       el('text', { x: pad.left + idx * bw + bw / 2, y: H - 8, class: 'axis', 'text-anchor': anchorFor(i, ticks) },
-        date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })),
+        formatMoment(rows[idx].t, span)),
     );
   }
   container.replaceChildren(svg);

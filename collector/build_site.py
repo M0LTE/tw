@@ -15,6 +15,7 @@ import datetime as dt
 import gzip
 import json
 import logging
+import re
 import sqlite3
 import statistics
 import sys
@@ -75,7 +76,7 @@ def _write(path: Path, payload: Any) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def open_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
+def open_faults(conn: sqlite3.Connection, today: dt.date, links: dict | None = None) -> dict:
     """Every currently-open fault, columnar and dictionary-encoded."""
     status, journey, city, source, work_type, priority = (Dictionary() for _ in range(6))
     cols: dict[str, list] = {k: [] for k in
@@ -133,6 +134,8 @@ def open_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
         },
         "cols": cols,
         "history": {str(k): v for k, v in history.items()},
+        # Reports that look like they prompted this fault, keyed by row index.
+        "reports": {str(index[k]): v for k, v in (links or {}).items() if k in index},
     }
 
 
@@ -418,6 +421,74 @@ def areas(conn: sqlite3.Connection, today: dt.date) -> dict:
     }
 
 
+# A report and a work order share no key, so the link can only be inferred.
+# Exact street + postcode within this window is high precision; widening past
+# seven days adds nothing (measured: 241 matched reports at both 7 and 14 days).
+MATCH_BEFORE_DAYS = 1   # slack for clock skew between the two feeds
+MATCH_AFTER_DAYS = 7
+
+
+def _match_key(street: str | None, postcode: str | None) -> tuple[str, str] | None:
+    if not street or not postcode:
+        return None
+    return (re.sub(r"\s+", " ", street.strip().upper()),
+            re.sub(r"\s+", " ", postcode.strip().upper()))
+
+
+def cross_links(conn: sqlite3.Connection) -> tuple[dict, dict]:
+    """Associate public reports with work orders raised at the same address.
+
+    Returns ``(by_report, by_fault)``. Deliberately keeps every candidate rather
+    than picking the closest in time: where an address has more than one work
+    order in the window the ambiguity is real, and choosing silently would
+    present a guess as a fact.
+    """
+    candidates: dict[tuple[str, str], list[dict]] = collections.defaultdict(list)
+    for table, is_open in (("faults", 1), ("closed_faults", 0)):
+        for row in conn.execute(
+            f"SELECT id, work_order_number, street, postcode, raised_at, journey_type, status "
+            f"FROM {table} WHERE raised_at IS NOT NULL"
+        ):
+            key = _match_key(row["street"], row["postcode"])
+            if key:
+                candidates[key].append({**dict(row), "open": is_open})
+
+    by_report: dict[str, list[dict]] = {}
+    by_fault: dict[str, list[dict]] = collections.defaultdict(list)
+
+    for report in conn.execute(
+        "SELECT id, street, postcode, reported_at FROM reports WHERE reported_at IS NOT NULL"
+    ):
+        key = _match_key(report["street"], report["postcode"])
+        if not key:
+            continue
+        reported = dt.datetime.fromisoformat(report["reported_at"])
+        hits = []
+        for work_order in candidates.get(key, []):
+            lag = (dt.datetime.fromisoformat(work_order["raised_at"]) - reported).total_seconds() / 86400
+            if -MATCH_BEFORE_DAYS <= lag <= MATCH_AFTER_DAYS:
+                hits.append({
+                    "id": work_order["id"],
+                    "wo": work_order["work_order_number"],
+                    "status": work_order["status"],
+                    "journey": work_order["journey_type"],
+                    "raised": day_index(work_order["raised_at"]),
+                    "open": work_order["open"],
+                    "lag_days": round(lag, 2),
+                })
+        if hits:
+            hits.sort(key=lambda h: h["lag_days"])
+            by_report[report["id"]] = hits
+            for hit in hits:
+                by_fault[hit["id"]].append({
+                    "id": report["id"],
+                    "reported": day_index(report["reported_at"]),
+                    "lag_days": hit["lag_days"],
+                })
+
+    return by_report, dict(by_fault)
+
+
 def closure_outcomes(conn: sqlite3.Connection) -> dict:
     """What actually happened to faults that left the open feed.
 
@@ -451,7 +522,7 @@ def closure_outcomes(conn: sqlite3.Connection) -> dict:
     }
 
 
-def public_reports(conn: sqlite3.Connection, today: dt.date) -> dict:
+def public_reports(conn: sqlite3.Connection, today: dt.date, links: dict | None = None) -> dict:
     """Problems the public has reported that are not yet work orders.
 
     Thames Water keeps only a rolling window of these, so we also carry recently
@@ -478,11 +549,15 @@ def public_reports(conn: sqlite3.Connection, today: dt.date) -> dict:
         cols["lon"].append(None if row["lon"] is None else round(row["lon"], 5))
         cols["lat"].append(None if row["lat"] is None else round(row["lat"], 5))
 
+    index = {report_id: i for i, report_id in enumerate(cols["id"])}
     return {
         "epoch": EPOCH.isoformat(),
         "today": (today - EPOCH).days,
         "dict": {"town": town.values},
         "cols": cols,
+        # Work orders raised at the same address shortly after, by row index.
+        "faults": {str(index[k]): v for k, v in (links or {}).items() if k in index},
+        "match_window": {"before_days": MATCH_BEFORE_DAYS, "after_days": MATCH_AFTER_DAYS},
     }
 
 
@@ -526,9 +601,11 @@ def build(db_path: Path, out: Path) -> None:
     payload["areas"] = areas(conn, today)
     payload["external_flooding"] = external_sewer_flooding(conn, today)
     payload["closure"] = closure_outcomes(conn)
+    by_report, by_fault = cross_links(conn)
+    payload["links"] = {"reports_matched": len(by_report), "faults_matched": len(by_fault)}
     _write(out / "summary.json", payload)
-    _write(out / "open.json", open_faults(conn, today))
-    _write(out / "reports.json", public_reports(conn, today))
+    _write(out / "open.json", open_faults(conn, today, by_fault))
+    _write(out / "reports.json", public_reports(conn, today, by_report))
     conn.close()
 
 

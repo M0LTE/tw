@@ -296,3 +296,11 @@ td.rate { position: relative; min-width: 130px; }
 
 /* Records Thames Water published with no address at all. */
 .pinned { color: var(--text-dim); font-style: italic; }
+
+/* Cross-links between a report and the work order that appears to follow it. */
+.linklist { list-style: none; margin: 0; padding: 0; }
+.linklist li {
+  padding: 9px 12px; margin-bottom: 6px;
+  background: var(--surface-2); border-radius: 7px; font-size: 13.5px;
+}
+.linklist .when { color: var(--text-dim); font-size: 12.5px; margin-top: 2px; }

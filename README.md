@@ -190,6 +190,11 @@ These matter if you are going to quote the numbers at anyone.
   right but not exclusive, and that match is the same coarse one #1 warns about.
 - **The reference shown on their map is the case number, not the work order number.** Both
   are searchable here.
+- **Report-to-fault links are inferred, not confirmed.** Where a report and a work order
+  share a street and postcode within a week, the site links them. Measured at 241 of 2,226
+  reports with a usable address (10.8%); 28 of those match more than one work order and all
+  candidates are shown. This is the same coarse match as #1 and carries no null model, so it
+  supports "here is work at this address" and not a conversion rate.
 - **A public report leaving the map does not mean it became a work order.** The two feeds
   share no key, so the conversion rate cannot be read off directly — only inferred from
   location and timing. Treat any such figure as an estimate.

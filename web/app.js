@@ -83,6 +83,55 @@ function locationCell(rec, town) {
   return '<span class="pinned">No location recorded</span>';
 }
 
+// Reports and work orders share no reference number, so a link is an inference
+// from address and timing. Say what was observed, never that one became the other.
+// Phrase from the calendar-day difference, not elapsed hours: a report at 16:33
+// and a work order at 12:21 the following morning is under 24 hours apart but
+// is plainly "the next day", and saying "the same day" reads as wrong.
+function lagPhrase(fromDay, toDay) {
+  if (fromDay === null || toDay === null || fromDay === undefined || toDay === undefined) return '';
+  const days = toDay - fromDay;
+  if (days === 0) return 'the same day';
+  if (days === 1) return 'the next day';
+  if (days > 1) return `${days} days later`;
+  return days === -1 ? 'the day before' : `${Math.abs(days)} days earlier`;
+}
+
+function renderReportLinks(matches, reportedDay) {
+  if (!matches || !matches.length) return '';
+  const items = matches.map((m) => `
+    <li>
+      ${m.open
+        ? `<a href="#" data-fault="${escape(m.id)}">Work order ${escape(m.wo)}</a>`
+        : `<span class="mono">Work order ${escape(m.wo)}</span> <span class="pinned">(closed)</span>`}
+      — ${escape(m.journey || '')}${m.status ? `, ${escape(m.status)}` : ''}
+      <div class="when">raised ${escape(formatDate(m.raised))}, ${escape(lagPhrase(reportedDay, m.raised))}</div>
+    </li>`).join('');
+  return `
+    <h2 style="font-size:14px;margin:18px 0 10px">Work at this address</h2>
+    <ul class="linklist">${items}</ul>
+    <p class="footnote" style="margin-top:8px">
+      ${matches.length > 1
+        ? `<strong>${matches.length} work orders</strong> were raised at this address in the window, so which (if any) followed from this report is ambiguous. All are shown.`
+        : 'Matched on street and postcode within a week of the report.'}
+      The two feeds share no reference number, so this is an association rather than a confirmed link.
+    </p>`;
+}
+
+function renderFaultLinks(matches, raisedDay) {
+  if (!matches || !matches.length) return '';
+  const items = matches.map((m) => `
+    <li><a href="#" data-report="${escape(m.id)}">Public report</a>
+      <div class="when">reported ${escape(formatDate(m.reported))} — ${escape(lagPhrase(m.reported, raisedDay))} this work order was raised</div>
+    </li>`).join('');
+  return `
+    <h2 style="font-size:14px;margin:18px 0 10px">Reported by the public</h2>
+    <ul class="linklist">${items}</ul>
+    <p class="footnote" style="margin-top:8px">
+      Matched on street and postcode. The feeds share no reference number, so this is an
+      association rather than a confirmed link.</p>`;
+}
+
 const NO_ADDRESS_NOTE =
   'Thames Water published this one with no street, town or postcode, which happens when a ' +
   'problem is pinned on the map rather than given an address. The coordinates are theirs.';
@@ -128,6 +177,7 @@ function expand(open) {
   // Statuses come from the dictionary in first-seen order; sort by the real
   // lifecycle so history timelines read in the right sequence.
   state.statusDict = dict.status;
+  state.faultReports = open.reports || {};
   return out;
 }
 
@@ -452,6 +502,7 @@ function openDetail(fault) {
     ${hasAddress(fault, fault.city) ? '' : `<p class="footnote" style="margin-top:0">${NO_ADDRESS_NOTE}</p>`}
     <h2 style="font-size:14px;margin:0 0 10px">What we have seen</h2>
     <ul class="timeline">${timeline}</ul>
+    ${renderFaultLinks((state.faultReports || {})[fault.i], fault.raised)}
     ${fault.lat ? `<p style="margin-top:16px"><a href="https://www.openstreetmap.org/?mlat=${fault.lat}&mlon=${fault.lon}#map=17/${fault.lat}/${fault.lon}" target="_blank" rel="noopener">View location on OpenStreetMap ↗</a></p>` : ''}
   `;
   $('#detail').showModal();
@@ -481,6 +532,7 @@ function expandReports(data) {
     };
     row.age = row.reported === null ? null : data.today - row.reported;
     row.haystack = [row.street, row.postcode, row.town].filter(Boolean).join(' ').toLowerCase();
+    row.faults = (data.faults || {})[i] || [];
     return row;
   });
 }
@@ -566,7 +618,7 @@ function openReportDetail(r) {
       ? escape(titleCase(r.town || '')) + ' ' + escape(r.postcode || '')
       : 'No address published'}</p>
     <dl class="kv">${rows.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>
-    <p class="footnote" style="margin-top:0">&ldquo;Leak&rdquo; is Thames Water's label for this
+    <p class="footnote" style="margin:0 0 18px">&ldquo;Leak&rdquo; is Thames Water's label for this
     whole layer, not a classification of this report: the feed carries no per-report problem type
     (<code>ProblemType</code> is <code>1</code> on every pin). It is broadly accurate — where a pin
     can be matched to a work order raised soon after at the same address, 98% are leak
@@ -576,10 +628,12 @@ function openReportDetail(r) {
       <li><strong>Reported to Thames Water</strong><div class="when">${escape(formatDate(r.reported))}</div></li>
       ${fate}
     </ul>
+    ${renderReportLinks(r.faults, r.reported)}
     ${hasAddress(r, r.town) ? '' : `<p class="footnote">${NO_ADDRESS_NOTE}</p>`}
     <p style="margin-top:16px;color:var(--text-dim);font-size:13px">
-      This is a public report, not yet a work order. It carries no reference number or repair
-      status until Thames Water raises one.
+      ${r.faults && r.faults.length
+        ? 'A public report carries no reference number or repair status of its own. Any status above belongs to the work order, not to this report.'
+        : 'This is a public report, not yet a work order. It carries no reference number or repair status until Thames Water raises one.'}
     </p>
     ${r.lat ? `<p style="margin-top:10px"><a href="https://www.openstreetmap.org/?mlat=${r.lat}&mlon=${r.lon}#map=17/${r.lat}/${r.lon}" target="_blank" rel="noopener">View location on OpenStreetMap ↗</a></p>` : ''}
   `;
@@ -861,6 +915,21 @@ function wireUp() {
     applyReportFilters();
   });
   $('#r-export').addEventListener('click', exportReportsCSV);
+
+  // Cross-links are rendered into the dialog, so delegate rather than rebind.
+  $('#detail-body').addEventListener('click', (e) => {
+    const toFault = e.target.closest('[data-fault]');
+    const toReport = e.target.closest('[data-report]');
+    if (!toFault && !toReport) return;
+    e.preventDefault();
+    if (toFault) {
+      const fault = state.faults.find((f) => f.id === toFault.dataset.fault);
+      if (fault) openDetail(fault);
+    } else {
+      const report = reportState.all.find((r) => r.id === toReport.dataset.report);
+      if (report) openReportDetail(report);
+    }
+  });
 
   $('#detail .dialog-close').addEventListener('click', () => $('#detail').close());
   $('#detail').addEventListener('click', (e) => { if (e.target.id === 'detail') $('#detail').close(); });

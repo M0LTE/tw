@@ -618,6 +618,88 @@ class ClosureOutcomeTests(unittest.TestCase):
         self.assertEqual(result["unexplained"], 1, "a departure with no closed record is unknown")
 
 
+class CrossLinkTests(unittest.TestCase):
+    """Associating reports with work orders raised at the same address (#17)."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = Path(self.tmp.name) / "faults.db"
+        deltas = Path(self.tmp.name) / "deltas"
+
+        raised = int(dt.datetime(2026, 1, 2, 12, 0, tzinfo=dt.timezone.utc).timestamp() * 1000)
+        late = int(dt.datetime(2026, 3, 1, 12, 0, tzinfo=dt.timezone.utc).timestamp() * 1000)
+        d = store.Delta(observed_at="2026-01-01T00:00:00+00:00", source_counts={"waste": 2})
+        d.for_kind(sources.WORK_ORDER).appeared = {
+            # Same address as the report below, raised the next day.
+            **records(feature("HIT", Street="3 mandeville  close", Postcode="rg30 4jt",
+                              WorkOrderRaisedDate=raised)),
+            # Same address but two months later: outside the window.
+            **records(feature("LATE", Street="3 MANDEVILLE CLOSE", Postcode="RG30 4JT",
+                              WorkOrderRaisedDate=late)),
+            # Different address entirely.
+            **records(feature("OTHER", Street="9 OTHER ROAD", Postcode="RG30 4JT",
+                              WorkOrderRaisedDate=raised)),
+        }
+        reported = int(dt.datetime(2026, 1, 1, 16, 33, tzinfo=dt.timezone.utc).timestamp() * 1000)
+        d.for_kind(sources.REPORT).appeared = report_records(
+            pin("rep-1", Street="3 Mandeville Close", Postcode="RG30 4JT", CreationDate=reported)
+        )
+        store.write_delta(deltas, d)
+        store.rebuild(self.db, deltas).close()
+
+    def links(self):
+        from collector import build_site
+
+        conn = sqlite3.connect(self.db)
+        conn.row_factory = sqlite3.Row
+        try:
+            return build_site.cross_links(conn)
+        finally:
+            conn.close()
+
+    def test_matches_across_whitespace_and_case(self):
+        by_report, by_fault = self.links()
+        self.assertIn("rep-1", by_report)
+        self.assertEqual([m["id"] for m in by_report["rep-1"]], ["HIT"])
+        self.assertIn("HIT", by_fault)
+        self.assertEqual(by_fault["HIT"][0]["id"], "rep-1")
+
+    def test_ignores_work_orders_outside_the_window(self):
+        by_report, _ = self.links()
+        self.assertNotIn("LATE", [m["id"] for m in by_report["rep-1"]])
+
+    def test_ignores_a_different_street_in_the_same_postcode(self):
+        by_report, _ = self.links()
+        self.assertNotIn("OTHER", [m["id"] for m in by_report["rep-1"]])
+
+    def test_keeps_every_candidate_rather_than_picking_one(self):
+        # Ambiguity is real; silently choosing the closest would present a guess
+        # as a fact.
+        conn = sqlite3.connect(self.db)
+        conn.execute(
+            "INSERT INTO faults (id, source, street, postcode, raised_at, status,"
+            " first_seen_at, last_seen_at, is_open) VALUES"
+            " ('TWIN','waste','3 MANDEVILLE CLOSE','RG30 4JT','2026-01-03T09:00:00+00:00',"
+            " 'Reported','2026-01-01T00:00:00+00:00','2026-01-01T00:00:00+00:00',1)"
+        )
+        conn.commit()
+        conn.close()
+        by_report, _ = self.links()
+        self.assertEqual(len(by_report["rep-1"]), 2)
+        # Sorted by lag, so the closest in time is first.
+        self.assertEqual(by_report["rep-1"][0]["id"], "HIT")
+
+    def test_a_report_with_no_address_matches_nothing(self):
+        conn = sqlite3.connect(self.db)
+        conn.execute("UPDATE reports SET street = NULL WHERE id = 'rep-1'")
+        conn.commit()
+        conn.close()
+        by_report, by_fault = self.links()
+        self.assertEqual(by_report, {})
+        self.assertEqual(by_fault, {})
+
+
 class BuildSiteTests(unittest.TestCase):
     def test_day_index_round_trips(self):
         from collector.build_site import EPOCH, day_index

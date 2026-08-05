@@ -166,10 +166,15 @@ CREATE TABLE IF NOT EXISTS snapshots (
     resolved      INTEGER NOT NULL,
     reappeared    INTEGER NOT NULL,
     source_counts TEXT NOT NULL,  -- JSON object
-    -- Set when the truncation guard refused this poll: JSON of kind -> the
-    -- fraction of known records that came back. Such a snapshot records what
-    -- the layers reported without applying any record change, so source_counts
-    -- and the fault table deliberately disagree. That disagreement is the
-    -- signal, not a defect: it is what a source-side purge looks like.
-    truncated     TEXT
+    -- Set when a layer could not be read completely — our retrieval disagreed
+    -- with the layer's own advertised count. Such a snapshot records what the
+    -- layers reported without applying any record change, so source_counts and
+    -- the fault table deliberately disagree.
+    truncated     TEXT,
+    -- Set when an unusually large share of known records stopped appearing in a
+    -- retrieval we verified as complete. Unlike `truncated` nothing is withheld:
+    -- the change is real and was applied in full. It exists so that duration
+    -- statistics can quarantine departures observed here, because one source-side
+    -- event should not silently rewrite every median on the site.
+    anomalous     TEXT
 );

@@ -256,6 +256,64 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(json.loads(row["source_counts"]), {"waste": 1},
                          "what the layer actually reported is kept")
 
+    def test_an_anomalous_snapshot_is_applied_in_full(self):
+        """#24 — magnitude flags, it does not veto.
+
+        The counterpart to the truncated case: there the retrieval was suspect
+        and nothing was applied. Here the retrieval was verified complete, so
+        the departures are real and every one is recorded.
+        """
+        day0 = records(feature("A"), feature("B"), feature("C"), feature("D"))
+        self.poll(0, day0, {}, set())
+
+        stamp = dt.datetime(2026, 1, 2, tzinfo=dt.timezone.utc).isoformat()
+        delta = build_delta(stamp, records(feature("A")), {"waste": 1}, day0, set(day0))
+        delta.anomalous = {"work_order": 0.25}
+        store.write_delta(self.deltas, delta)
+
+        conn = self.replay()
+        self.assertEqual(
+            conn.execute("SELECT count(*) FROM faults WHERE is_open = 0").fetchone()[0], 3,
+            "a verified-complete poll is believed, however large the drop",
+        )
+        row = conn.execute("SELECT anomalous, truncated FROM snapshots WHERE observed_at = ?",
+                           (stamp,)).fetchone()
+        conn.close()
+        self.assertEqual(json.loads(row["anomalous"]), {"work_order": 0.25})
+        self.assertIsNone(row["truncated"], "nothing was withheld, so nothing is marked truncated")
+
+    def test_anomalous_departures_are_kept_out_of_duration_stats_unless_corroborated(self):
+        """#24 — record it all, but do not let one event rewrite every median.
+
+        A source-side purge would otherwise register as thousands of faults
+        resolved on the hour. Thames Water's own closed feed saying "Completed"
+        is evidence; a record merely ceasing to be published is not.
+        """
+        from collector import build_site
+
+        # Raised before the poll window, so a resolution has a positive duration.
+        RAISED = 1764579600000
+        day0 = records(*(feature(i, WorkOrderRaisedDate=RAISED) for i in "ABCD"))
+        self.poll(0, day0, {}, set())
+
+        stamp = dt.datetime(2026, 1, 2, tzinfo=dt.timezone.utc).isoformat()
+        live = records(feature("A", WorkOrderRaisedDate=RAISED))
+        delta = build_delta(stamp, live, {"waste": 1}, day0, set(day0))
+        delta.anomalous = {"work_order": 0.25}
+        # B is corroborated by the closed feed; C and D just stopped appearing.
+        delta.for_kind(sources.CLOSED).appeared = {
+            "B": records(feature("B", WorkOrderStatus="Completed"), source="clean_closed")["B"],
+        }
+        store.write_delta(self.deltas, delta)
+
+        conn = self.replay()
+        conn.row_factory = sqlite3.Row
+        result = build_site.summary(conn, dt.date(2026, 1, 2))
+        conn.close()
+
+        self.assertEqual(result["resolution"]["quarantined"], 2, "C and D are not evidence")
+        self.assertEqual(result["resolution"]["n"], 1, "only the corroborated departure counts")
+
     def test_a_truncated_delta_is_never_considered_empty(self):
         # `is_empty` gates whether a delta is written at all; a counts-only
         # observation has no record ops and would otherwise be dropped.

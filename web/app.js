@@ -1126,13 +1126,14 @@ function wireUp() {
   $('#detail').addEventListener('click', (e) => { if (e.target.id === 'detail') $('#detail').close(); });
 }
 
-// The collector refuses to apply a poll in which most known records vanish,
-// because doing so would write tens of thousands of phantom closures. The
-// counts are still recorded. That leaves the site showing the last backlog we
-// were willing to believe rather than what the source is serving, so say so
-// plainly and give both numbers — a stale figure presented as current is
-// exactly the kind of quiet wrongness this project exists to catch.
-function renderTruncationBanner(info) {
+// Two different things can be wrong with the newest poll, and conflating them
+// would mislead in opposite directions. A *truncated* poll is one we could not
+// read completely, so nothing was applied and the backlog shown is stale. An
+// *anomalous* poll was read fine and really did lose a great many records, so
+// the backlog is current but mostly unexplained. Saying nothing would leave
+// either reading as "an ordinary week", which is the quiet wrongness this
+// project exists to catch — and here it would be ours.
+function renderAnomalyBanner(info) {
   const banner = $('#truncated-banner');
   if (!info) { banner.hidden = true; return; }
 
@@ -1141,16 +1142,21 @@ function renderTruncationBanner(info) {
   const pct = Math.round((info.retained.work_order ?? 0) * 100);
 
   banner.hidden = false;
-  banner.innerHTML =
-    `<strong>Thames Water's feed is currently serving far fewer work orders than it was.</strong> `
-    + `At ${escape(when)} their open layers returned `
-    + `<strong>${formatNumber(info.source_open)}</strong> work orders, against `
-    + `<strong>${formatNumber(info.our_open)}</strong> we had been tracking as open — `
-    + `${pct}% of known records came back. `
-    + 'That is too large a drop to read as repairs, so the collector recorded the counts but '
-    + '<strong>did not mark anything as cleared</strong>. '
-    + 'The figures below are therefore the last ones we were willing to believe, not what their '
-    + 'map is showing right now. They will catch up on their own if the feed recovers.';
+  banner.innerHTML = info.kind === 'truncated'
+    ? `<strong>The last collection could not read Thames Water's feed completely.</strong> `
+      + `At ${escape(when)} what we retrieved did not match the row count their own layers `
+      + 'advertised, so the poll was recorded but <strong>no fault was marked as cleared</strong>. '
+      + 'The figures below are from the last collection we could verify.'
+    : `<strong>Thames Water's feed has just dropped most of its open work orders.</strong> `
+      + `At ${escape(when)} <strong>${formatNumber(info.departed)}</strong> work orders stopped `
+      + `appearing in one collection — ${pct}% of what we were tracking came back, leaving `
+      + `<strong>${formatNumber(info.our_open)}</strong> open. `
+      + 'The retrieval was checked against their own advertised row counts and was complete, so '
+      + 'this is what their feed is serving, not a collection failure. '
+      + '<strong>It is not evidence that the work was done.</strong> Almost none of it is '
+      + "corroborated by Thames Water's closed feed, so those departures are shown in "
+      + 'Faults → Cleared as <em>Not confirmed</em> and are excluded from the time-to-clear '
+      + 'figures below rather than being allowed to rewrite them.';
 }
 
 // ── Boot ────────────────────────────────────────────────────────
@@ -1180,7 +1186,7 @@ async function main() {
     if (!state.cleared.length) $('#f-mode').hidden = true;
     syncModeUI();
 
-    renderTruncationBanner(summary.truncated);
+    renderAnomalyBanner(summary.truncated);
 
     const collected = summary.totals.latest_snapshot;
     $('#freshness-value').textContent = collected

@@ -65,11 +65,17 @@ class Delta:
     observed_at: str
     source_counts: dict[str, int] = field(default_factory=dict)
     kinds: dict[str, Change] = field(default_factory=dict)
-    # Per-kind retained fraction when the truncation guard refused this poll.
-    # A truncated delta carries what the layers *said* without applying a single
-    # record change: the counts are a real observation and worth keeping, while
-    # the implied departures are not trustworthy enough to write to history.
-    truncated: dict[str, float] = field(default_factory=dict)
+    # Set when a layer could not be read completely — our retrieval disagreed
+    # with the layer's own advertised count. Such a delta carries the counts and
+    # applies no record change: the observation is worth keeping, the records
+    # are not safe to trust.
+    truncated: dict[str, object] = field(default_factory=dict)
+    # Per-kind retained fraction when an unusually large share of known records
+    # stopped appearing. Unlike `truncated` this does NOT withhold anything: the
+    # retrieval was verified complete, so the change is real and is applied in
+    # full. It marks the snapshot so downstream statistics can quarantine
+    # departures observed here (#24).
+    anomalous: dict[str, float] = field(default_factory=dict)
 
     def for_kind(self, kind: str) -> Change:
         return self.kinds.setdefault(kind, Change())
@@ -114,6 +120,7 @@ def write_delta(root: Path, delta: Delta) -> Path:
                 "observed_at": delta.observed_at,
                 "source_counts": delta.source_counts,
                 "truncated": delta.truncated,
+                "anomalous": delta.anomalous,
             },
             sort_keys=True,
         )
@@ -270,7 +277,8 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
     observed_at = ""
     counts = {"appeared": 0, "changed": 0, "resolved": 0, "reappeared": 0}
     source_counts: dict[str, int] = {}
-    truncated: dict[str, float] = {}
+    truncated: dict = {}
+    anomalous: dict[str, float] = {}
 
     for entry in entries:
         op = entry.get("op")
@@ -279,6 +287,7 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
             observed_at = entry["observed_at"]
             source_counts = entry.get("source_counts", {})
             truncated = entry.get("truncated") or {}
+            anomalous = entry.get("anomalous") or {}
             continue
 
         if not observed_at:
@@ -352,8 +361,9 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
     if observed_at:
         conn.execute(
             "INSERT OR REPLACE INTO snapshots "
-            "(observed_at, total, appeared, changed, resolved, reappeared, source_counts, truncated) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(observed_at, total, appeared, changed, resolved, reappeared, source_counts, "
+            " truncated, anomalous) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 observed_at,
                 sum(source_counts.values()),
@@ -363,6 +373,7 @@ def _apply_delta(conn: sqlite3.Connection, entries: Iterable[dict]) -> None:
                 counts["reappeared"],
                 json.dumps(source_counts, sort_keys=True),
                 json.dumps(truncated, sort_keys=True) if truncated else None,
+                json.dumps(anomalous, sort_keys=True) if anomalous else None,
             ),
         )
 

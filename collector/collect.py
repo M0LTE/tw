@@ -22,10 +22,11 @@ ROOT = Path(__file__).resolve().parent.parent
 DELTAS = ROOT / "data" / "deltas"
 DB = ROOT / "data" / "faults.db"
 
-# If a poll returns dramatically fewer rows than we hold, something is wrong at
-# the source (a partial republish, an outage). Treating that as "20,000 faults
-# fixed overnight" would poison the history, so we refuse to write the delta.
-MIN_RETAINED_FRACTION = 0.5
+# Below this share of known records returning, a snapshot is flagged as an
+# anomalous movement. It is not refused: see #24 — "too big to believe" is not a
+# data-integrity property, and the integrity question is answered separately by
+# checking our retrieval against the layer's own advertised count.
+ANOMALY_FRACTION = 0.5
 
 # One normaliser per source kind. Keyed rather than branched, so adding a kind
 # without a normaliser fails loudly instead of quietly using the wrong one.
@@ -36,11 +37,30 @@ NORMALISERS = {
 }
 
 
+class IncompleteLayer(Exception):
+    """We did not retrieve everything the layer says it holds.
+
+    This is the only defensible reason to distrust a poll. "Too few records came
+    back compared to last time" is a statement about the world; this is a
+    statement about our own retrieval, and it is the one we can actually check.
+    """
+
+
 def fetch(source: Source) -> dict[str, dict]:
-    """All current records from one layer, keyed by record id."""
+    """All current records from one layer, keyed by record id.
+
+    Brackets the page-through with ``returnCountOnly`` queries. If the layer's
+    own count agrees with what we retrieved, both before and after, the poll is
+    complete and whatever it says is a real observation — however implausible
+    the number looks. If they disagree, either paging skipped rows (``query_all``
+    documents how ``resultOffset`` can do that) or the layer was edited beneath
+    us, and either way the result is not safe to write to history.
+    """
     layer_id = arcgis.resolve_layer_id(source.service_url, source.layer_name)
     layer_url = f"{source.service_url}/{layer_id}"
     log.info("fetching %s (%s)", source.label, layer_url)
+
+    advertised_before = arcgis.layer_count(layer_url)
 
     # Dispatch by kind explicitly. This was an `if work_order else report`
     # binary, which silently sent closed work orders through the report
@@ -48,7 +68,9 @@ def fetch(source: Source) -> dict[str, dict]:
     normalise = NORMALISERS[source.kind]
     records: dict[str, dict] = {}
     skipped = 0
+    retrieved = 0
     for feature in arcgis.query_all(layer_url):
+        retrieved += 1
         normalised = normalise(feature, source.key)
         if normalised is None:
             skipped += 1
@@ -56,7 +78,14 @@ def fetch(source: Source) -> dict[str, dict]:
         record_id, record = normalised
         records[record_id] = record
 
-    log.info("  %d records (%d without an id)", len(records), skipped)
+    advertised_after = arcgis.layer_count(layer_url)
+    if not (advertised_before == retrieved == advertised_after):
+        raise IncompleteLayer(
+            f"{source.key}: layer advertised {advertised_before} rows, we retrieved "
+            f"{retrieved}, it now advertises {advertised_after}"
+        )
+
+    log.info("  %d records (%d without an id, %d advertised)", len(records), skipped, retrieved)
     return records
 
 
@@ -108,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="write the delta even if the poll looks truncated",
+        help="apply record changes even if a layer could not be read completely",
     )
     args = parser.parse_args(argv)
 
@@ -132,54 +161,56 @@ def main(argv: list[str] | None = None) -> int:
     delta = store.Delta(observed_at=observed_at)
     live: dict[str, dict[str, dict]] = {kind: {} for kind in store.SPECS}
 
+    incomplete: list[str] = []
     for source in SOURCES:
-        records = fetch(source)
-        if not records:
-            log.error(
-                "%s returned no records; aborting rather than recording mass closure", source.key
-            )
-            conn.close()
-            return 1
+        try:
+            records = fetch(source)
+        except IncompleteLayer as exc:
+            log.error("%s", exc)
+            incomplete.append(source.key)
+            continue
         delta.source_counts[source.key] = len(records)
         live[source.kind].update(records)
 
-    for kind, spec in store.SPECS.items():
-        before = previous[kind]
-        if before:
-            retained = len(set(before) & set(live[kind])) / len(before)
-            if retained < MIN_RETAINED_FRACTION and not args.force:
-                delta.truncated[kind] = round(retained, 4)
-                log.error(
-                    "only %.1f%% of the %d current %s records came back",
-                    retained * 100,
-                    len(before),
-                    kind,
-                )
-
-    # A truncated poll writes the counts and nothing else. Applying the implied
-    # departures would record tens of thousands of phantom closures; discarding
-    # the run entirely would lose the only evidence that the source moved, which
-    # is exactly what happened while the clean and waste layers were collapsing
-    # on 2026-08-05 (#21). The counts are a real observation; the departures they
-    # imply are not trustworthy, so we keep the first and refuse the second.
-    if delta.truncated:
+    # An incomplete retrieval is the one thing we refuse to write. A layer that
+    # honestly reports zero rows is a real observation and goes through; a layer
+    # we failed to read properly does not.
+    if incomplete and not args.force:
+        delta.truncated = {"incomplete": sorted(incomplete)}
         log.error(
-            "refusing to apply record changes for %s; writing a counts-only "
-            "observation instead (re-run with --force if the drop is genuine)",
-            ", ".join(sorted(delta.truncated)),
+            "could not read %s completely; writing a counts-only observation and "
+            "applying no record changes", ", ".join(sorted(incomplete)),
         )
         delta.kinds.clear()
         path = store.write_delta(args.deltas, delta)
         log.info("wrote %s (counts only)", path.relative_to(ROOT))
         conn.close()
-        conn = store.rebuild(args.db, args.deltas)
-        conn.close()
+        store.rebuild(args.db, args.deltas).close()
         print(json.dumps({
             "observed_at": observed_at,
             "truncated": delta.truncated,
             "source_counts": delta.source_counts,
         }))
         return 0
+
+    # Magnitude is a flag, not a veto. A retrieval we have verified as complete
+    # says what the source says, and refusing it because the number looks wrong
+    # would put our editorial judgement ahead of the measurement — the failure
+    # mode this project exists to expose in others (#24). What a large movement
+    # does earn is an annotation: departures observed in a flagged snapshot are
+    # kept out of the duration statistics unless the closed feed corroborates
+    # them, so one source-side event cannot quietly rewrite every median.
+    for kind, spec in store.SPECS.items():
+        before = previous[kind]
+        if before:
+            retained = len(set(before) & set(live[kind])) / len(before)
+            if retained < ANOMALY_FRACTION:
+                delta.anomalous[kind] = round(retained, 4)
+                log.warning(
+                    "only %.1f%% of the %d known %s records came back; retrieval verified "
+                    "complete, so recording it and flagging the snapshot",
+                    retained * 100, len(before), kind,
+                )
 
     for kind, spec in store.SPECS.items():
         classify(delta.for_kind(kind), live[kind], previous[kind], known[kind])

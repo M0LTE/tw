@@ -152,7 +152,7 @@ Useful flags:
 
 ```bash
 python -m collector.collect --rebuild-only   # rebuild the database, do not poll
-python -m collector.collect --force          # write the delta even if the poll looks truncated
+python -m collector.collect --force          # apply changes even if a layer could not be read fully
 ```
 
 Run the tests with:
@@ -177,7 +177,7 @@ python -m collector.checks   # leak-label proportion, link rate, address-less re
 3. The workflow needs no secrets — it uses the built-in `GITHUB_TOKEN`.
 
 The workflow runs at quarter past every hour. It runs the tests first, and refuses to write a delta
-if the poll looks truncated (see below), so a bad hour at the source cannot corrupt history.
+if a layer could not be read completely (see below), so a failed read cannot corrupt history.
 
 Hourly rather than daily because resolution not collected is gone for good, while bytes are cheap:
 a run is 23 requests and under two minutes. Twice-daily collection could not tell whether the
@@ -201,9 +201,21 @@ These matter if you are going to quote the numbers at anyone.
   `ShowOnMapIndicator` flag; anything they suppress is invisible to this and to the public.
 - **Faults occasionally reappear** after dropping out for a day. They are counted once and
   flagged with `reappearances`, not double-counted as a new fault.
-- **The feed can be republished mid-poll.** If fewer than half of the known open faults come
-  back, the collector aborts rather than recording tens of thousands of phantom closures.
-  Override with `--force` when a drop is genuine.
+- **A poll is checked for completeness, not plausibility.** Every layer is bracketed with
+  `returnCountOnly` queries: if the count before, the rows retrieved, and the count after all
+  agree, the read is complete and whatever it says is recorded — however implausible. If they
+  disagree, paging skipped rows or the layer changed underneath us, so the run records the
+  counts and applies no record change. Override with `--force`.
+
+  It deliberately does **not** refuse a drop for being too large. "Too big to be true" is not a
+  data-integrity property, and a guard that discards observations on those grounds would put our
+  editorial judgement ahead of the measurement. A drop that large instead flags the snapshot as
+  `anomalous`.
+- **Departures in a flagged snapshot are excluded from the duration figures** unless Thames
+  Water's own closed feed corroborates them, and the excluded count is published alongside. On
+  2026-08-05 their feed shed 9,620 work orders in a single hour; every one is recorded and
+  browsable, but letting them into the time-to-clear percentiles would have rewritten every
+  median on the site off the back of one source-side event.
 - **History starts the day collection starts.** Ages come from Thames Water's raised dates
   and so reach back to 2023, but backlog and flow trends only begin from the first snapshot.
 - **Work order timestamps are published as UK local time with a UTC label.** We convert them

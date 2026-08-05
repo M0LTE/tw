@@ -228,6 +228,24 @@ def cleared_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
     }
 
 
+def anomalous_snapshots(conn: sqlite3.Connection) -> set[str]:
+    """Snapshots where an unusual share of known records stopped appearing.
+
+    The retrieval was verified complete, so the departures are recorded in full
+    and are browsable. What they are kept out of is the *duration* statistics:
+    a source-side event that empties a layer would otherwise register as
+    thousands of faults "resolved" on the hour and silently rewrite every median
+    on the site. A departure observed here counts once the closed feed
+    corroborates it — Thames Water saying "Completed" is evidence; the record
+    merely ceasing to be published is not (#24).
+    """
+    return {
+        row[0] for row in conn.execute(
+            "SELECT observed_at FROM snapshots WHERE anomalous IS NOT NULL"
+        )
+    }
+
+
 def _percentiles(values: list[float]) -> dict[str, float | None]:
     if not values:
         return {"p50": None, "p90": None, "mean": None, "max": None}
@@ -327,11 +345,22 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
 
     # Time to resolution, for faults we watched from start to finish.
     cutoff = (today - dt.timedelta(days=RESOLVED_WINDOW_DAYS)).isoformat()
-    resolved_rows = conn.execute(
-        "SELECT source, journey_type, raised_at, first_seen_at, resolved_at FROM faults "
-        "WHERE is_open = 0 AND resolved_at >= ?",
+    # Departures seen in a flagged snapshot are excluded unless Thames Water's
+    # own closed feed corroborates them; see `anomalous_snapshots`.
+    flagged = anomalous_snapshots(conn)
+    candidates = conn.execute(
+        "SELECT f.source, f.journey_type, f.raised_at, f.first_seen_at, f.resolved_at,"
+        "       cf.id AS corroborated "
+        "FROM faults f LEFT JOIN closed_faults cf ON cf.id = f.id "
+        "WHERE f.is_open = 0 AND f.resolved_at >= ?",
         (cutoff,),
     ).fetchall()
+    admitted = [
+        row for row in candidates
+        if row["resolved_at"] not in flagged or row["corroborated"] is not None
+    ]
+    quarantined = len(candidates) - len(admitted)
+    resolved_rows = admitted
 
     resolution_all: list[float] = []
     resolution_observed: list[float] = []
@@ -358,23 +387,26 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
         "ORDER BY observed_at"
     ).fetchall()
 
-    # When the newest poll was refused by the truncation guard, the backlog on
-    # this site is the last figure we were willing to believe, not what the
-    # source is currently serving. Publish both so the page can say so: showing
-    # a stale backlog as though it were current would be exactly the kind of
-    # quiet wrongness this project exists to catch.
-    truncation = conn.execute(
-        "SELECT observed_at, truncated, source_counts FROM snapshots "
-        "WHERE truncated IS NOT NULL ORDER BY observed_at DESC LIMIT 1"
+    # Two different things can be wrong with the newest poll, and they need
+    # saying differently. `truncated` means we could not read a layer completely
+    # and applied nothing, so the backlog shown is stale. `anomalous` means we
+    # read it fine and a great many records really did stop appearing, so the
+    # backlog is current but a big part of it is unexplained. Publishing neither
+    # would leave a reader to assume an ordinary week.
+    latest_row = conn.execute(
+        "SELECT observed_at, truncated, anomalous, resolved, source_counts FROM snapshots "
+        "ORDER BY observed_at DESC LIMIT 1"
     ).fetchone()
     stale = None
-    if truncation and snapshots and truncation["observed_at"] == snapshots[-1]["observed_at"]:
-        counts = json.loads(truncation["source_counts"])
+    if latest_row and (latest_row["truncated"] or latest_row["anomalous"]):
+        counts = json.loads(latest_row["source_counts"])
         stale = {
-            "observed_at": truncation["observed_at"],
-            "retained": json.loads(truncation["truncated"]),
+            "kind": "truncated" if latest_row["truncated"] else "anomalous",
+            "observed_at": latest_row["observed_at"],
+            "retained": json.loads(latest_row["anomalous"] or latest_row["truncated"] or "{}"),
             "source_open": sum(counts.get(s.key, 0) for s in SOURCES if s.kind == sources.WORK_ORDER),
             "our_open": len(open_rows),
+            "departed": latest_row["resolved"],
         }
 
     return {
@@ -404,6 +436,12 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
         "snapshot_times": [int(dt.datetime.fromisoformat(o).timestamp()) for o in observed],
         "resolution": {
             "window_days": RESOLVED_WINDOW_DAYS,
+            # Departures from flagged snapshots that the closed feed does not
+            # corroborate, and which therefore do not count towards any duration
+            # below. Published rather than merely applied: silently dropping
+            # records from a statistic is the same sin as silently including
+            # them, and the reader is entitled to know the denominator moved.
+            "quarantined": quarantined,
             "n": len(resolution_all),
             "since_raised": _percentiles(resolution_all),
             "fully_observed_n": len(resolution_observed),

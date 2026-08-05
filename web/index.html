@@ -269,6 +269,15 @@
         <li>A clearance time is the collection that <em>first found the fault missing</em>, not the
           moment it left. Collection is hourly, so a departure is placed within about an hour; it is
           not exact, and the site does not pretend otherwise.</li>
+        <li>Each poll is checked for <strong>completeness, not plausibility</strong>: every layer's
+          own row count is read before and after, and if it disagrees with what was retrieved the run
+          records the counts and changes nothing. A drop is never rejected for being too large —
+          &ldquo;too big to be true&rdquo; is not a test of the data, and refusing observations on
+          those grounds would put our judgement ahead of the measurement.</li>
+        <li>When an unusual share of records vanishes at once, the collection is <strong>flagged</strong>
+          and a banner says so. Those departures are recorded and browsable, but they are kept out of
+          the time-to-clear figures unless the closed feed corroborates them, so a single source-side
+          event cannot rewrite every median here. The number excluded is published with them.</li>
       </ul>
 
       <h3>Reports, and how they link to faults</h3>

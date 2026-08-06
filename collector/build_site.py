@@ -228,6 +228,26 @@ def cleared_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
     }
 
 
+def _peak_work_orders_before(conn: sqlite3.Connection, before: str, days: int = 7) -> int | None:
+    """Highest open work order count in the week preceding `before`.
+
+    Not "the previous snapshot": an event can unfold across several collections
+    — the 2026-08-05 one ran from 18:47 to 23:18 — so the immediately preceding
+    snapshot may already be part of the collapse and would understate it wildly.
+    A peak over a window is unambiguous and needs no judgement about where the
+    event started.
+    """
+    since = (dt.datetime.fromisoformat(before) - dt.timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        "SELECT source_counts FROM snapshots WHERE observed_at < ? AND observed_at >= ?",
+        (before, since),
+    ).fetchall()
+    if not rows:
+        return None
+    keys = [s.key for s in SOURCES if s.kind == sources.WORK_ORDER]
+    return max(sum(json.loads(r["source_counts"]).get(k, 0) for k in keys) for r in rows)
+
+
 def anomalous_snapshots(conn: sqlite3.Connection) -> set[str]:
     """Snapshots where an unusual share of known records stopped appearing.
 
@@ -393,20 +413,36 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
     # read it fine and a great many records really did stop appearing, so the
     # backlog is current but a big part of it is unexplained. Publishing neither
     # would leave a reader to assume an ordinary week.
-    latest_row = conn.execute(
+    # A flag is a property of a *period*, not of one collection. Keying this to
+    # "the newest snapshot is flagged" made the warning vanish the moment normal
+    # collection resumed, while the backlog it explained was still 63% down and
+    # unexplained on the page (#25). It stays up while it is still shaping what
+    # the site reports — which is exactly while departures are being held out of
+    # the duration figures.
+    flagged_row = conn.execute(
         "SELECT observed_at, truncated, anomalous, resolved, source_counts FROM snapshots "
+        "WHERE truncated IS NOT NULL OR anomalous IS NOT NULL "
         "ORDER BY observed_at DESC LIMIT 1"
     ).fetchone()
     stale = None
-    if latest_row and (latest_row["truncated"] or latest_row["anomalous"]):
-        counts = json.loads(latest_row["source_counts"])
+    if flagged_row and (quarantined or flagged_row["observed_at"] == snapshots[-1]["observed_at"]):
+        counts = json.loads(flagged_row["source_counts"])
         stale = {
-            "kind": "truncated" if latest_row["truncated"] else "anomalous",
-            "observed_at": latest_row["observed_at"],
-            "retained": json.loads(latest_row["anomalous"] or latest_row["truncated"] or "{}"),
+            "kind": "truncated" if flagged_row["truncated"] else "anomalous",
+            "observed_at": flagged_row["observed_at"],
+            "is_latest": flagged_row["observed_at"] == snapshots[-1]["observed_at"],
+            "retained": json.loads(flagged_row["anomalous"] or flagged_row["truncated"] or "{}"),
             "source_open": sum(counts.get(s.key, 0) for s in SOURCES if s.kind == sources.WORK_ORDER),
             "our_open": len(open_rows),
-            "departed": latest_row["resolved"],
+            "departed": flagged_row["resolved"],
+            "quarantined": quarantined,
+            # What the backlog stood at before the flagged collection, so the
+            # banner can state the size of the drop rather than leaving the
+            # reader to find a previous figure that is no longer on the page.
+            # Work-order layers only: `snapshots.total` sums all five, which
+            # would quietly inflate the "down from" figure by ~4,000 reports and
+            # closed records.
+            "open_before": _peak_work_orders_before(conn, flagged_row["observed_at"]),
         }
 
     return {

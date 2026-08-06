@@ -1142,21 +1142,29 @@ function renderAnomalyBanner(info) {
   const pct = Math.round((info.retained.work_order ?? 0) * 100);
 
   banner.hidden = false;
+  // "just dropped" is right for the hour it happens and wrong the next
+  // morning, so the tense follows whether this is still the newest collection.
+  const dropped = info.is_latest ? 'has just dropped' : 'dropped';
+  const before = info.open_before
+    ? `, against a peak of <strong>${formatNumber(info.open_before)}</strong> in the week before`
+    : '';
+
   banner.innerHTML = info.kind === 'truncated'
     ? `<strong>The last collection could not read Thames Water's feed completely.</strong> `
       + `At ${escape(when)} what we retrieved did not match the row count their own layers `
       + 'advertised, so the poll was recorded but <strong>no fault was marked as cleared</strong>. '
       + 'The figures below are from the last collection we could verify.'
-    : `<strong>Thames Water's feed has just dropped most of its open work orders.</strong> `
+    : `<strong>Thames Water's feed ${dropped} most of its open work orders.</strong> `
       + `At ${escape(when)} <strong>${formatNumber(info.departed)}</strong> work orders stopped `
-      + `appearing in one collection — ${pct}% of what we were tracking came back, leaving `
-      + `<strong>${formatNumber(info.our_open)}</strong> open. `
+      + `appearing in a single collection — ${pct}% of what we were tracking came back. `
+      + `The backlog below stands at <strong>${formatNumber(info.our_open)}</strong>${before}. `
       + 'The retrieval was checked against their own advertised row counts and was complete, so '
       + 'this is what their feed is serving, not a collection failure. '
       + '<strong>It is not evidence that the work was done.</strong> Almost none of it is '
       + "corroborated by Thames Water's closed feed, so those departures are shown in "
-      + 'Faults → Cleared as <em>Not confirmed</em> and are excluded from the time-to-clear '
-      + 'figures below rather than being allowed to rewrite them.';
+      + 'Faults → Cleared as <em>Not confirmed</em>, and '
+      + `<strong>${formatNumber(info.quarantined)}</strong> of them are excluded from the `
+      + 'time-to-clear figures below rather than being allowed to rewrite them.';
 }
 
 // ── Boot ────────────────────────────────────────────────────────

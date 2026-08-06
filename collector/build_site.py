@@ -34,6 +34,7 @@ OUT = ROOT / "web" / "data"
 REFERENCE = ROOT / "data" / "reference"
 POSTCODE_LA = REFERENCE / "postcode_la.json.gz"
 LA_HOUSEHOLDS = REFERENCE / "la_households.json"
+NOTES = ROOT / "data" / "notes.json"
 
 EPOCH = dt.date(2020, 1, 1)
 # How much resolution history the "how fast do they fix things" panels use.
@@ -226,6 +227,42 @@ def cleared_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
         },
         "cols": cols,
     }
+
+
+def notes() -> dict:
+    """Hand-written narrative entries, validated on the way through.
+
+    The one part of the site not derived from the change log, because it is the
+    part that needs judgement: the data can show that 13,600 work orders stopped
+    being published, but only a person can say what that probably means.
+
+    Validated rather than passed through: a typo in a block key would otherwise
+    render as a silently missing paragraph, and a note that quietly loses half
+    its reasoning is worse than no note.
+    """
+    if not NOTES.exists():
+        log.warning("no %s; the narrative page will be empty", NOTES.name)
+        return {"entries": []}
+
+    raw = json.loads(NOTES.read_text())
+    entries = []
+    for i, entry in enumerate(raw.get("entries", [])):
+        where = f"notes.json entry {i}"
+        for required in ("date", "title", "body"):
+            if not entry.get(required):
+                raise ValueError(f"{where}: missing {required!r}")
+        try:
+            dt.date.fromisoformat(entry["date"])
+        except ValueError as exc:
+            raise ValueError(f"{where}: date {entry['date']!r} is not ISO 8601") from exc
+        for block in entry["body"]:
+            keys = set(block) & {"p", "list", "table"}
+            if len(keys) != 1:
+                raise ValueError(f"{where}: each body block needs exactly one of p/list/table, got {sorted(block)}")
+        entries.append({k: v for k, v in entry.items() if not k.startswith("_")})
+
+    entries.sort(key=lambda e: e["date"], reverse=True)
+    return {"entries": entries}
 
 
 def _peak_work_orders_before(conn: sqlite3.Connection, before: str, days: int = 7) -> int | None:
@@ -786,6 +823,7 @@ def build(db_path: Path, out: Path) -> None:
     payload["links"] = {"reports_matched": len(by_report), "faults_matched": len(by_fault)}
     _write(out / "summary.json", payload)
     _write(out / "open.json", open_faults(conn, today, by_fault))
+    _write(out / "notes.json", notes())
     _write(out / "cleared.json", cleared_faults(conn, today))
     _write(out / "reports.json", public_reports(conn, today, by_report))
     conn.close()

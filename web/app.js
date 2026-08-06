@@ -288,9 +288,15 @@ function renderKPIs() {
       ? {
           label: shortSpan ? 'Backlog, since tracking began' : 'Backlog, last 7 days',
           value: `${net > 0 ? '+' : ''}${formatNumber(net)}`,
-          tone: net > 0 ? 'bad' : 'good',
-          note: `${formatNumber(raised)} arrived, ${formatNumber(cleared)} cleared` +
-                (shortSpan ? ` over ${formatNumber(spanHours)} hours` : ''),
+          // A falling backlog is normally good news, and is coloured that way.
+          // It is not good news when the fall is a source-side event: rendering
+          // a 12,613 collapse as a green improvement would be the site telling
+          // the exact lie it exists to catch. Stay neutral and say why.
+          tone: s.truncated ? '' : (net > 0 ? 'bad' : 'good'),
+          note: s.truncated
+            ? `mostly the ${formatNumber(s.truncated.departed)} work orders that stopped being published — not work completed`
+            : `${formatNumber(raised)} arrived, ${formatNumber(cleared)} cleared` +
+              (shortSpan ? ` over ${formatNumber(spanHours)} hours` : ''),
         }
       : {
           label: 'Backlog trend',
@@ -310,7 +316,10 @@ function renderKPIs() {
       ? {
           label: 'Typical time to clear',
           value: `${formatNumber(s.resolution.since_raised.p50)}d`,
-          note: `median of ${formatNumber(s.resolution.n)} faults cleared recently`,
+          note: `median of ${formatNumber(s.resolution.n)} faults cleared recently`
+            + (s.resolution.quarantined
+              ? `; excludes ${formatNumber(s.resolution.quarantined)} uncorroborated departures`
+              : ''),
         }
       : {
           label: 'Typical time to clear',
@@ -1122,49 +1131,98 @@ function wireUp() {
     }
   });
 
+  // The backlog pointer is a same-page link into the notes view; switch view
+  // first, then scroll, since the target is hidden until the view is shown.
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('a[data-note]');
+    if (!link) return;
+    e.preventDefault();
+    show('notes');
+    const target = document.getElementById(`note-${link.dataset.note}`);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
   $('#detail .dialog-close').addEventListener('click', () => $('#detail').close());
   $('#detail').addEventListener('click', (e) => { if (e.target.id === 'detail') $('#detail').close(); });
 }
 
-// Two different things can be wrong with the newest poll, and conflating them
-// would mislead in opposite directions. A *truncated* poll is one we could not
-// read completely, so nothing was applied and the backlog shown is stale. An
-// *anomalous* poll was read fine and really did lose a great many records, so
-// the backlog is current but mostly unexplained. Saying nothing would leave
-// either reading as "an ordinary week", which is the quiet wrongness this
-// project exists to catch — and here it would be ours.
-function renderAnomalyBanner(info) {
-  const banner = $('#truncated-banner');
-  if (!info) { banner.hidden = true; return; }
+// The caveat belongs next to the number, not in a box at the top of the page.
+// When a collection is flagged, the backlog chart is the figure it distorts, so
+// the pointer sits under that chart and links to the note explaining it.
+function renderBacklogNote(info) {
+  const host = $('#backlog-note');
+  if (!host) return;
+  if (!info) { host.hidden = true; return; }
+  const when = new Date(info.observed_at)
+    .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const iso = info.observed_at.slice(0, 10);
+  host.hidden = false;
+  host.innerHTML = info.kind === 'truncated'
+    ? `The most recent collection could not be read completely, so this chart ends at the last one `
+      + `that could. <a href="#notes" data-note="${escape(iso)}">Read the note</a>.`
+    : `The step on ${escape(when)} is <strong>${formatNumber(info.departed)}</strong> work orders `
+      + 'that stopped being published in a single collection. It is not a record of work completed — '
+      + `<a href="#notes" data-note="${escape(iso)}">read the note</a>.`;
+}
 
-  const when = new Date(info.observed_at).toLocaleString('en-GB',
-    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  const pct = Math.round((info.retained.work_order ?? 0) * 100);
+// ── Notes ───────────────────────────────────────────────────────
+//
+// Dated narrative entries from data/notes.json. This replaced a banner across
+// the top of the overview: an alarming yellow box is the wrong shape for
+// something that stays true for weeks, and it left no room to show the working.
+// A note can carry the evidence and the reasoning, and it stays readable long
+// after the event stops being news.
 
-  banner.hidden = false;
-  // "just dropped" is right for the hour it happens and wrong the next
-  // morning, so the tense follows whether this is still the newest collection.
-  const dropped = info.is_latest ? 'has just dropped' : 'dropped';
-  const before = info.open_before
-    ? `, against a peak of <strong>${formatNumber(info.open_before)}</strong> in the week before`
-    : '';
+// A deliberately tiny inline vocabulary — bold, italic, code, links — rather than raw
+// HTML. Entries are trusted repo content, so this is not about safety; it is so
+// the JSON stays legible as prose to whoever writes the next one.
+function inlineMarkup(text) {
+  return escape(text)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
 
-  banner.innerHTML = info.kind === 'truncated'
-    ? `<strong>The last collection could not read Thames Water's feed completely.</strong> `
-      + `At ${escape(when)} what we retrieved did not match the row count their own layers `
-      + 'advertised, so the poll was recorded but <strong>no fault was marked as cleared</strong>. '
-      + 'The figures below are from the last collection we could verify.'
-    : `<strong>Thames Water's feed ${dropped} most of its open work orders.</strong> `
-      + `At ${escape(when)} <strong>${formatNumber(info.departed)}</strong> work orders stopped `
-      + `appearing in a single collection — ${pct}% of what we were tracking came back. `
-      + `The backlog below stands at <strong>${formatNumber(info.our_open)}</strong>${before}. `
-      + 'The retrieval was checked against their own advertised row counts and was complete, so '
-      + 'this is what their feed is serving, not a collection failure. '
-      + '<strong>It is not evidence that the work was done.</strong> Almost none of it is '
-      + "corroborated by Thames Water's closed feed, so those departures are shown in "
-      + 'Faults → Cleared as <em>Not confirmed</em>, and '
-      + `<strong>${formatNumber(info.quarantined)}</strong> of them are excluded from the `
-      + 'time-to-clear figures below rather than being allowed to rewrite them.';
+function renderBlock(block) {
+  if (block.p) return `<p>${inlineMarkup(block.p)}</p>`;
+  if (block.list) return `<ul>${block.list.map((i) => `<li>${inlineMarkup(i)}</li>`).join('')}</ul>`;
+  if (block.table) {
+    const head = block.table.head.map((h) => `<th>${inlineMarkup(h)}</th>`).join('');
+    const rows = block.table.rows.map((r) =>
+      `<tr>${r.map((cell, i) => `<td class="${i ? 'num' : ''}">${inlineMarkup(cell)}</td>`).join('')}</tr>`).join('');
+    return `<div class="table-wrap"><table class="note-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  return '';
+}
+
+function renderNotes(data) {
+  const host = $('#notes-body');
+  const entries = (data && data.entries) || [];
+  if (!entries.length) {
+    host.innerHTML = '<section class="card"><p class="footnote">Nothing noted yet.</p></section>';
+    return;
+  }
+
+  host.innerHTML = entries.map((entry) => {
+    const when = new Date(entry.date + 'T00:00:00Z')
+      .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const refs = (entry.refs || []).length
+      ? `<p class="footnote note-refs">${entry.refs.map((r) =>
+          `<a href="${escape(r.url)}" target="_blank" rel="noopener">${escape(r.label)}</a>`).join(' · ')}</p>`
+      : '';
+    return `
+      <section class="card note" id="note-${escape(entry.date)}">
+        <header>
+          <p class="note-date"><time datetime="${escape(entry.date)}">${escape(when)}</time></p>
+          <h2>${escape(entry.title)}</h2>
+          ${entry.summary ? `<p class="note-summary">${inlineMarkup(entry.summary)}</p>` : ''}
+        </header>
+        <div class="prose note-body">${entry.body.map(renderBlock).join('')}</div>
+        ${refs}
+      </section>`;
+  }).join('');
 }
 
 // ── Boot ────────────────────────────────────────────────────────
@@ -1172,12 +1230,13 @@ function renderAnomalyBanner(info) {
 async function main() {
   wireUp();
   try {
-    const [summary, open, reports, cleared] = await Promise.all([
+    const [summary, open, reports, cleared, noteData] = await Promise.all([
       loadJSON('data/summary.json'),
       loadJSON('data/open.json'),
       loadJSON('data/reports.json').catch(() => null),
       // Tolerated missing so the site still loads against an older data build.
       loadJSON('data/cleared.json').catch(() => null),
+      loadJSON('data/notes.json').catch(() => null),
     ]);
 
     state.summary = summary;
@@ -1194,8 +1253,6 @@ async function main() {
     if (!state.cleared.length) $('#f-mode').hidden = true;
     syncModeUI();
 
-    renderAnomalyBanner(summary.truncated);
-
     const collected = summary.totals.latest_snapshot;
     $('#freshness-value').textContent = collected
       ? new Date(collected).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -1209,6 +1266,8 @@ async function main() {
     fillSelect('#f-status', summary.status_order.filter((s) => summary.by_status[s]), 'Any status');
     fillSelect('#f-journey', Object.keys(summary.by_journey), 'Any problem');
 
+    renderNotes(noteData);
+    renderBacklogNote(summary.truncated);
     renderOverview();
     renderOldest();
     renderFlooding();

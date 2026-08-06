@@ -38,3 +38,25 @@ State the caveat next to the number, not only in the README. Never assert a
 legal or financial claim (money owed, breach of a standard) without a citation
 to the regulation, and prefer reporting elapsed time against a threshold over
 asserting a consequence.
+
+## Write a note when something interesting happens
+
+`data/notes.json` is the site's narrative log. When the source does something
+that would otherwise leave a figure on the site unexplained, add a dated entry:
+what was observed, what the evidence shows, and — separately and explicitly —
+what it does not prove. Quote figures that can be reproduced from
+`data/deltas/`, and link the issue carrying the working.
+
+This is the only content on the site that is written rather than counted, so it
+is the only place a mistake cannot be caught by rebuilding. Say plainly where a
+reading is inference rather than observation.
+
+A number moving sharply is not automatically a story; a number moving sharply
+for a reason a reader could not guess from the page always is. The trigger to
+check for is a figure that would mislead somebody who arrived today knowing
+none of the history.
+
+The same event usually needs the surrounding numbers looking at too. A backlog
+collapse rendered "-12,613" in green, or a median that quietly excludes
+thousands of records, is the site telling the exact kind of lie it exists to
+catch.

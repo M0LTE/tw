@@ -118,6 +118,13 @@ tell a repair from a cancellation.
 
 `snapshots` — one row per collection run, with per-source counts.
 
+`data/notes.json` is the site's narrative log — hand-written, dated entries explaining anything
+that would otherwise leave a figure unexplained. It is the only content on the site not derived
+from the change log, because it is the only part that needs judgement: the data can show that
+13,600 work orders stopped being published, but not what that meant. `build_site` validates it
+(a mistyped block key would otherwise render as a silently missing paragraph) and emits it to
+`web/data/notes.json`. Figures quoted in an entry must still be reproducible from `data/deltas/`.
+
 `build_site` emits `web/data/cleared.json` alongside the open faults: every departure in the
 last 90 days as a browsable record, carrying the closure date and the closed-feed verdict where
 there is one. Open faults are a bounded set and cleared ones are not, hence the window; older

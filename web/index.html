@@ -32,13 +32,13 @@
   <button role="tab" data-view="reports">Reports</button>
   <button role="tab" data-view="map">Map</button>
   <button role="tab" data-view="places">Places</button>
+  <button role="tab" data-view="notes">Notes</button>
   <button role="tab" data-view="about">About</button>
 </nav>
 
 <main>
   <div id="loading" class="loading">Loading fault data…</div>
   <div id="error" class="error" hidden></div>
-  <div id="truncated-banner" class="banner" hidden></div>
 
   <!-- ── Overview ─────────────────────────────────────────────── -->
   <section id="view-overview" class="view" hidden>
@@ -51,6 +51,7 @@
       </header>
       <div class="chart-host" id="chart-backlog"></div>
       <div class="legend" id="legend-backlog"></div>
+      <p class="footnote" id="backlog-note" hidden></p>
     </section>
 
     <section class="card">
@@ -207,6 +208,19 @@
     </section>
   </section>
 
+  <!-- ── Notes ────────────────────────────────────────────────── -->
+  <section id="view-notes" class="view" hidden>
+    <section class="card">
+      <header>
+        <h2>What has been happening</h2>
+        <p>Dated notes on anything that would otherwise leave a number here unexplained. This is
+           the one part of the site written rather than counted — the figures come from the change
+           log, the reading of them does not.</p>
+      </header>
+    </section>
+    <div id="notes-body"></div>
+  </section>
+
   <!-- ── About ────────────────────────────────────────────────── -->
   <section id="view-about" class="view" hidden>
     <section class="card prose">
@@ -274,10 +288,14 @@
           records the counts and changes nothing. A drop is never rejected for being too large —
           &ldquo;too big to be true&rdquo; is not a test of the data, and refusing observations on
           those grounds would put our judgement ahead of the measurement.</li>
-        <li>When an unusual share of records vanishes at once, the collection is <strong>flagged</strong>
-          and a banner says so. Those departures are recorded and browsable, but they are kept out of
-          the time-to-clear figures unless the closed feed corroborates them, so a single source-side
-          event cannot rewrite every median here. The number excluded is published with them.</li>
+        <li>When an unusual share of records vanishes at once, the collection is <strong>flagged</strong>.
+          Those departures are recorded and browsable, but they are kept out of the time-to-clear
+          figures unless the closed feed corroborates them, so a single source-side event cannot
+          rewrite every median here. The number excluded is published with them.</li>
+        <li>Anything that would otherwise leave a figure here unexplained gets a dated entry under
+          <strong>Notes</strong>, with the evidence behind it. That is the one part of this site that
+          is written rather than counted: the change log can show that thousands of work orders
+          stopped being published, but not what it meant.</li>
       </ul>
 
       <h3>Reports, and how they link to faults</h3>

@@ -1,0 +1,96 @@
+{
+  "_comment": [
+    "Hand-written narrative entries. This is the one part of the site that is not",
+    "derived from the change log, because it is the part that requires judgement:",
+    "the data can show that 13,600 work orders stopped being published, but only a",
+    "person can say what that probably means and what it does not prove.",
+    "",
+    "Add an entry when something happens that would otherwise leave a reader",
+    "puzzled by a number, or when a claim on the site needs its reasoning shown.",
+    "Every figure quoted here must be reproducible from data/deltas/.",
+    "",
+    "Body blocks: {\"p\": text} | {\"list\": [...]} | {\"table\": {head, rows}}.",
+    "Inline markup in any text: **bold**, *italic*, `code`, [label](url). Nothing",
+    "else — entries are trusted repo content, but a small vocabulary keeps them plain."
+  ],
+  "entries": [
+    {
+      "date": "2026-08-05",
+      "title": "Two thirds of the backlog stopped being published",
+      "summary": "Thames Water's map lost 13,600 open work orders in a single evening. Almost none of it is corroborated as work done.",
+      "body": [
+        {
+          "p": "On the morning of 5 August, Thames Water's public map carried **20,477** open work orders. By that evening it carried **7,350**. Clean water went first — the 18:47 collection found it down from 9,680 to 5,615. Waste water followed two hours later, collapsing from 10,855 to **1,386**, 13% of what it had held that morning. It has since settled at about 7,644 and has not recovered."
+        },
+        {
+          "p": "This site records what their feed publishes, so the drop is shown as it happened. What follows is why we do not think it means the work was done."
+        },
+        {
+          "p": "**Their own closed feed does not corroborate it.** Thames Water separately publishes work orders it has finished with, marked *Completed* or *Canceled*. Before this event, 66.9% of faults that left the map turned up there within a day. For these departures:"
+        },
+        {
+          "table": {
+            "head": ["Departures", "Number", "Corroborated as closed"],
+            "rows": [
+              ["Everything before 5 August", "127", "85 (66.9%)"],
+              ["Clean water, 18:47", "4,149", "4 (0.1%)"],
+              ["Waste water, 23:18", "9,498", "176 (1.9%)"]
+            ]
+          }
+        },
+        {
+          "p": "The closed feed did grow — it gained 1,600 records at 00:46 — but only 367 of those are work orders that departed in this event. It is a different set of records, not the missing ones arriving."
+        },
+        {
+          "p": "**The wrong records went.** If thousands of jobs had been completed, they would have moved into the finished states. Instead the finished states are almost the only thing that survived, while work still in progress was wiped:"
+        },
+        {
+          "table": {
+            "head": ["Status (waste water)", "Departed", "Survived", "% gone"],
+            "rows": [
+              ["Investigation", "8,253", "515", "94.1%"],
+              ["Repair Underway", "837", "219", "79.3%"],
+              ["Repair Planning", "513", "349", "59.5%"],
+              ["Reported", "176", "59", "74.9%"],
+              ["Completed", "14", "342", "3.9%"],
+              ["Canceled", "0", "19", "0.0%"]
+            ]
+          }
+        },
+        {
+          "p": "**They were not renumbered either.** A system migration could give the same faults new reference numbers, which would look like mass departure followed by mass arrival. Matching departures against later arrivals on street, postcode and Thames Water's own raised time finds only 28 matches out of 1,202 — and every one is the same record returning under an identical `WorkOrderID`. These are reappearances, not renamed faults."
+        },
+        {
+          "p": "**Nor is it a cutoff by age.** The oldest surviving open faults still date from August 2023 and March 2024. Of roughly 13,600 departures, 190 have ever come back. The loss was close to indiscriminate: 70–90% gone across every problem type, every priority flag and both networks."
+        },
+        {
+          "p": "What it did change is the shape of what remains. The middle of the distribution was hollowed out, and the proportion of very old work actually doubled:"
+        },
+        {
+          "table": {
+            "head": ["Age of open faults", "Before", "After"],
+            "rows": [
+              ["Under 30 days", "27%", "46%"],
+              ["30 to 90 days", "34%", "16%"],
+              ["90 days to a year", "34%", "27%"],
+              ["Over a year", "5%", "11%"]
+            ]
+          }
+        },
+        {
+          "p": "**What we think happened.** Most likely a publication or data pipeline failure at Thames Water's end that has persisted rather than healed. We can rule out a fault on our side: each layer is checked against the row count Thames Water's own service advertises, and every retrieval through this period was complete. Their service really is serving these numbers."
+        },
+        {
+          "p": "What we cannot do is prove it. A layer that reports 1,386 rows because the system feeding it broke looks identical, from outside, to one that reports 1,386 rows because that is the truth. That distinction needs someone inside Thames Water, or an answer to a formal information request."
+        },
+        {
+          "p": "**What this site does about it.** All 13,600 departures are recorded and browsable under Faults → Cleared, where they show as *Not confirmed*. They are held out of the time-to-fix figures unless the closed feed corroborates them, so that a single event at the source cannot quietly rewrite every average here. The number excluded is published alongside."
+        }
+      ],
+      "refs": [
+        { "label": "Issue #21 — the event and the collector's response", "url": "https://github.com/M0LTE/tw/issues/21" },
+        { "label": "Issue #24 — why the poll is checked for completeness, not plausibility", "url": "https://github.com/M0LTE/tw/issues/24" }
+      ]
+    }
+  ]
+}

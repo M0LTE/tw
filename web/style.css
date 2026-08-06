@@ -324,3 +324,22 @@ td.rate { position: relative; min-width: 130px; }
   background: rgba(217, 143, 6, 0.12); border: 1px solid rgba(217, 143, 6, 0.45);
 }
 .banner strong { font-weight: 650; }
+
+/* ── Notes ─────────────────────────────────────────────────────
+   Dated narrative entries. Deliberately reads as prose rather than as a
+   dashboard panel: this is the part of the site that argues rather than
+   counts, and it should look like it. */
+.note-date {
+  font-size: 12.5px; color: var(--text-dim); text-transform: uppercase;
+  letter-spacing: 0.05em; margin: 0 0 4px;
+}
+.note header h2 { margin: 0 0 6px; }
+.note-summary { font-size: 15.5px; color: var(--text-dim); margin: 0; max-width: none; }
+.note-body { font-size: 15px; line-height: 1.65; }
+.note-body p { max-width: none; }
+.note-body ul { margin: 10px 0; padding-left: 20px; }
+.note-body li { margin: 4px 0; }
+.note-table { font-size: 14px; margin: 4px 0 2px; }
+.note-table td.num, .note-table th:not(:first-child) { text-align: right; }
+.note-refs { margin-top: 14px; }
+.note-refs a { margin-right: 4px; }

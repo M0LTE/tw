@@ -15,12 +15,98 @@
   ],
   "entries": [
     {
+      "date": "2026-08-08",
+      "title": "Leaks sit for years. Sewage problems do not.",
+      "summary": "800 clean water work orders have been open for more than a year. The waste water figure is 21.",
+      "body": [
+        {
+          "p": "Thames Water's map covers two networks: clean water — the pipes bringing water to you — and waste water, the sewers taking it away. Set side by side, the work outstanding on each looks nothing alike."
+        },
+        {
+          "p": "These are counts of work Thames Water is publishing as open right now, measured from its own raised date:"
+        },
+        {
+          "table": {
+            "head": ["Network", "Open over a year", "Open over two years"],
+            "rows": [
+              ["Clean water", "800", "83"],
+              ["Waste water", "21", "8"]
+            ]
+          }
+        },
+        {
+          "p": "**510 of the year-old clean water cases are visible leak investigations** — water coming out of the ground somewhere, reported, logged, and still logged a year later. The oldest open clean water work order was raised in March 2024."
+        },
+        {
+          "p": "The obvious objection is that this is an artefact of how the map works rather than a fact about the work, so we checked three ways before publishing it."
+        },
+        {
+          "list": [
+            "**It is not the 5 August data loss.** Before that event clean water had 977 work orders over a year old and waste water had 21. Waste water still has exactly 21. The gap predates it entirely.",
+            "**There is no cutoff removing old sewer work.** If the map dropped waste water records past a certain age, none would survive to be old — but 8 waste water work orders have been open over two years, and the oldest dates from August 2023. Old sewer work can stay on the map. There is just very little of it.",
+            "**These are not estimates.** They are counts of the records on the map today, not a sample or a projection."
+          ]
+        },
+        {
+          "p": "What it most likely reflects is triage, and there is a reasonable version of that: a blocked sewer or sewage flooding a garden forces action within days, while a leak that is merely wasting water can be left on a list. Both readings — that sewage work is genuinely dealt with quickly, and that leaks are genuinely tolerated for years — are consistent with the same numbers."
+        },
+        {
+          "p": "What the figures do *not* show is whether the leak is still leaking. A work order staying open means Thames Water has not closed it, not that water is still running today. Nor can we say how much water is involved: the feed carries no volume, and a year-old *investigation* is not the same as a year-old known leak."
+        },
+        {
+          "p": "If you reported a leak and it is still on their map months later, that is not unusual. It is the normal condition of several hundred cases."
+        }
+      ],
+      "refs": [
+        { "label": "Issue #27 — the check-in, and what was deliberately not published", "url": "https://github.com/M0LTE/tw/issues/27" }
+      ]
+    },
+    {
+      "date": "2026-08-08",
+      "title": "Three days on, the missing work orders have not come back",
+      "summary": "The map has settled at about 7,200 open work orders and stayed there. Ordinary service resumed — over a much smaller published set.",
+      "body": [
+        {
+          "p": "Following the collapse of 5 August, described in the entry below, the map has now been read 44 more times. Open work orders have stayed between 7,197 and 7,661 throughout, and stood at **7,222** at the most recent collection. Waste water is still at 13.7% of the size it was that morning. Nothing has been restored."
+        },
+        {
+          "p": "The useful new evidence is that everything *else* went back to normal. When a work order leaves the map, Thames Water's separate closed feed usually confirms within a day that it was completed or cancelled. That confirmation rate collapsed during the event and has since recovered:"
+        },
+        {
+          "table": {
+            "head": ["Departures", "Number", "Confirmed by the closed feed"],
+            "rows": [
+              ["Before 5 August, 18:00", "122", "86 (70.5%)"],
+              ["During the event", "14,034", "369 (2.6%)"],
+              ["Since 6 August, 01:00", "1,773", "1,066 (60.1%)"]
+            ]
+          }
+        },
+        {
+          "p": "That tells us something worth knowing: this was **a single episode of loss, not a system that is still broken**. Records are being created, updated and closed normally again. They are simply doing it over a set of published work orders about a third the previous size."
+        },
+        {
+          "p": "**The practical point for anyone using their map.** A fault disappearing from it is not evidence that anyone fixed it. That is always somewhat true — this site exists partly to say so — but on the evening of 5 August it was true roughly 13,600 times at once. If a problem you reported stopped appearing that evening, the disappearance carries no information about the work."
+        },
+        {
+          "p": "Your reference number is unaffected. It is Thames Water's record, not the map's, and remains the thing to quote when asking them directly."
+        },
+        {
+          "p": "We still cannot say what caused it, and expect not to be able to. From outside, a service reporting 1,386 rows because the system feeding it failed looks exactly like one reporting 1,386 rows because that is genuinely all there is."
+        }
+      ],
+      "refs": [
+        { "label": "Issue #21 — the event in full", "url": "https://github.com/M0LTE/tw/issues/21" },
+        { "label": "Issue #27 — this check-in", "url": "https://github.com/M0LTE/tw/issues/27" }
+      ]
+    },
+    {
       "date": "2026-08-05",
       "title": "Two thirds of the backlog stopped being published",
       "summary": "Thames Water's map lost 13,600 open work orders in a single evening. Almost none of it is corroborated as work done.",
       "body": [
         {
-          "p": "On the morning of 5 August, Thames Water's public map carried **20,477** open work orders. By that evening it carried **7,350**. Clean water went first — the 18:47 collection found it down from 9,680 to 5,615. Waste water followed two hours later, collapsing from 10,855 to **1,386**, 13% of what it had held that morning. It has since settled at about 7,644 and has not recovered."
+          "p": "On the morning of 5 August, Thames Water's public map carried **20,477** open work orders. By that evening it carried **7,350**. Clean water went first — the 18:47 collection found it down from 9,680 to 5,615. Waste water followed two hours later, collapsing from 10,855 to **1,386**, 13% of what it had held that morning. It settled at about 7,600 over the following hours and did not recover; see the later entries for where it stands now."
         },
         {
           "p": "This site records what their feed publishes, so the drop is shown as it happened. What follows is why we do not think it means the work was done."

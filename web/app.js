@@ -1197,6 +1197,14 @@ function renderBlock(block) {
   return '';
 }
 
+// More than one thing can happen on a day, so the date alone is not a unique
+// id. Keep the bare date for the first entry of a day — that is what the
+// backlog pointer links to — and suffix any others.
+function noteId(entry, i, entries) {
+  const earlier = entries.slice(0, i).filter((e) => e.date === entry.date).length;
+  return `note-${entry.date}${earlier ? `-${earlier + 1}` : ''}`;
+}
+
 function renderNotes(data) {
   const host = $('#notes-body');
   const entries = (data && data.entries) || [];
@@ -1205,7 +1213,7 @@ function renderNotes(data) {
     return;
   }
 
-  host.innerHTML = entries.map((entry) => {
+  host.innerHTML = entries.map((entry, i) => {
     const when = new Date(entry.date + 'T00:00:00Z')
       .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     const refs = (entry.refs || []).length
@@ -1213,7 +1221,7 @@ function renderNotes(data) {
           `<a href="${escape(r.url)}" target="_blank" rel="noopener">${escape(r.label)}</a>`).join(' · ')}</p>`
       : '';
     return `
-      <section class="card note" id="note-${escape(entry.date)}">
+      <section class="card note" id="${noteId(entry, i, entries)}">
         <header>
           <p class="note-date"><time datetime="${escape(entry.date)}">${escape(when)}</time></p>
           <h2>${escape(entry.title)}</h2>

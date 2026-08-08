@@ -229,18 +229,25 @@ These matter if you are going to quote the numbers at anyone.
   on ingest; deltas written before this was spotted are corrected on replay. The public
   reports layer uses ArcGIS editor-tracking fields, which are already UTC.
 - **"Leak" is Thames Water's label for the whole pending-pins layer**, not a per-report
-  classification: `ProblemType` is `1` on every record. Checked empirically — of 268 pins that
-  could be matched to a work order raised soon after at the same address, 254 (94.8%) were
-  `Visible Leak Investigation`, 7 flooding, 6 a blockage and 1 pollution. So the label is
-  broadly right but not exclusive, and it rests on the same inferred match as the caveat below.
+  classification: `ProblemType` is `1` on every record. Checked empirically — of 1,029 pins that
+  could be matched to a work order raised soon after on the same street, 950 (92.3%) were
+  `Visible Leak Investigation`, 57 flooding, 11 a blockage, 8 pollution and 3 other. So the label
+  is broadly right but not exclusive, and it rests on the same inferred match as the caveat below.
 - **The reference shown on their map is the case number, not the work order number.** Both
   are searchable here.
 - **Report-to-fault links are inferred, not confirmed.** Where a report and a work order
-  share a street and postcode within a week, the site links them. Measured at 268 of 2,300
-  reports with a usable address; 29 match more than one work order, and all candidates are shown
-  rather than one being picked. A null model — same addresses, dates shifted by 30 to 90 days —
-  produces 1.8 matches against those 268 real ones, so the links themselves are sound in the
-  sense that they are not coincidence. That still does not give a conversion
+  share a street and postcode within a week, the site links them. Measured at 1,029 of 3,161
+  reports with a usable address; 416 match more than one work order, and all candidates are shown
+  rather than one being picked.
+
+  Matching is at **street level, not house number**. Thames Water's `Street` field is a single
+  free-text address line — about 70% of records begin with a house number, formatted
+  inconsistently (`5,MANDEVILLE CLOSE`, `TILEHURST ROAD 47A`) — so keying on it raw required an
+  exact house-number and punctuation match and missed roughly half the real links (#28). A leak
+  outside one house is routinely worked on under a neighbour's address.
+
+  A null model — same addresses, dates shifted by 30 to 90 days — produces 18 matches against
+  those 1,029 real ones, so the links are not coincidence. That still does not give a conversion
   *rate*, because reports without an address cannot match at all and a report can be acted on
   without generating its own work order.
 - **A public report leaving the map does not mean it became a work order.** The two feeds

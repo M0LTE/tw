@@ -8,9 +8,10 @@ recomputes them so the claim can be checked rather than trusted.
     python -m collector.checks
 
 It deliberately reuses ``build_site.cross_links`` rather than reimplementing
-the address match: an ad-hoc key that treated a missing street as ``""``
-previously bucketed every address-less record together and produced a badly
-wrong answer. Measuring the thing the site actually does is the point.
+the address match. Two separate bugs have come from not doing so: an ad-hoc key
+that treated a missing street as ``""`` bucketed every address-less record
+together, and the production key itself silently required an identical house
+number until #28. Measuring the thing the site actually does is the point.
 """
 
 from __future__ import annotations
@@ -29,8 +30,8 @@ def leak_label(conn: sqlite3.Connection) -> None:
     """How well does the pending-pins layer's blanket "Leak" label hold up?
 
     ``ProblemType`` is 1 on every report, so the label cannot be per-report.
-    The only available check is what kind of work order appeared at the same
-    address shortly after. One vote per report, using its closest match in
+    The only available check is what kind of work order appeared on the same
+    street shortly after. One vote per report, using its closest match in
     time — which is the candidate the site lists first.
     """
     by_report, _ = cross_links(conn)

@@ -831,6 +831,11 @@ class CrossLinkTests(unittest.TestCase):
             # Different address entirely.
             **records(feature("OTHER", Street="9 OTHER ROAD", Postcode="RG30 4JT",
                               WorkOrderRaisedDate=raised)),
+            # Same street, different house number, and Thames Water's own
+            # comma-without-a-space formatting. A leak outside №3 is routinely
+            # worked on under №5, so this has to match (#28).
+            **records(feature("NEIGHBOUR", Street="5,MANDEVILLE CLOSE", Postcode="RG30 4JT",
+                              WorkOrderRaisedDate=raised)),
         }
         reported = int(dt.datetime(2026, 1, 1, 16, 33, tzinfo=dt.timezone.utc).timestamp() * 1000)
         d.for_kind(sources.REPORT).appeared = report_records(
@@ -852,15 +857,49 @@ class CrossLinkTests(unittest.TestCase):
     def test_matches_across_whitespace_and_case(self):
         by_report, by_fault = self.links()
         self.assertIn("rep-1", by_report)
-        self.assertEqual([m["id"] for m in by_report["rep-1"]], ["HIT"])
+        self.assertIn("HIT", [m["id"] for m in by_report["rep-1"]])
         self.assertIn("HIT", by_fault)
         self.assertEqual(by_fault["HIT"][0]["id"], "rep-1")
+
+    def test_matches_a_neighbouring_house_on_the_same_street(self):
+        """#28 — `Street` is an address line, not a street.
+
+        Keying on it raw meant a report at №3 could never reach a work order at
+        №5, which is the commonest shape of a real link: a leak in the road
+        outside one house gets worked on under its neighbour's address. It cost
+        roughly half of all links, and the report at 3 Mandeville Close that
+        exposed it went a week showing nothing while a Visible Leak
+        Investigation sat on the Faults page one door away.
+        """
+        by_report, _ = self.links()
+        self.assertIn("NEIGHBOUR", [m["id"] for m in by_report["rep-1"]])
+
+    def test_street_name_strips_house_numbers_but_not_street_names(self):
+        from collector.build_site import _street_name
+
+        for raw, expected in (
+            ("3 Mandeville Close", "MANDEVILLE CLOSE"),
+            ("5,MANDEVILLE CLOSE", "MANDEVILLE CLOSE"),
+            ("  3   mandeville  close ", "MANDEVILLE CLOSE"),
+            ("47A TILEHURST ROAD", "TILEHURST ROAD"),
+            # Thames Water also puts the number at the end.
+            ("TILEHURST ROAD 47A", "TILEHURST ROAD"),
+            # A name with no number at all must survive intact.
+            ("NORTH LODGE", "NORTH LODGE"),
+        ):
+            self.assertEqual(_street_name(raw), expected, raw)
 
     def test_ignores_work_orders_outside_the_window(self):
         by_report, _ = self.links()
         self.assertNotIn("LATE", [m["id"] for m in by_report["rep-1"]])
 
     def test_ignores_a_different_street_in_the_same_postcode(self):
+        by_report, _ = self.links()
+        self.assertNotIn("OTHER", [m["id"] for m in by_report["rep-1"]])
+
+    def test_house_numbers_are_not_mistaken_for_street_names(self):
+        # Stripping must not be so eager that two different streets collapse
+        # together: '9 OTHER ROAD' is a different street, not a different number.
         by_report, _ = self.links()
         self.assertNotIn("OTHER", [m["id"] for m in by_report["rep-1"]])
 
@@ -877,9 +916,11 @@ class CrossLinkTests(unittest.TestCase):
         conn.commit()
         conn.close()
         by_report, _ = self.links()
-        self.assertEqual(len(by_report["rep-1"]), 2)
-        # Sorted by lag, so the closest in time is first.
-        self.assertEqual(by_report["rep-1"][0]["id"], "HIT")
+        # HIT and NEIGHBOUR (same street, next door) plus TWIN, raised a day later.
+        self.assertEqual({m["id"] for m in by_report["rep-1"]}, {"HIT", "NEIGHBOUR", "TWIN"})
+        # Sorted by lag, so the furthest in time is last. HIT and NEIGHBOUR share
+        # a raised time, so assert on the ordering that is actually determinate.
+        self.assertEqual(by_report["rep-1"][-1]["id"], "TWIN")
 
     def test_a_report_with_no_address_matches_nothing(self):
         conn = sqlite3.connect(self.db)

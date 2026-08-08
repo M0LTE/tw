@@ -646,11 +646,39 @@ MATCH_BEFORE_DAYS = 1   # slack for clock skew between the two feeds
 MATCH_AFTER_DAYS = 7
 
 
+# Thames Water's `Street` is a full address line, not a street: about 70% of
+# records begin with a house number, in no consistent format —
+# "5,MANDEVILLE CLOSE", "21 MANDEVILLE CLOSE TILEHURST", "TILEHURST ROAD 47A".
+# Keying on it raw meant a report at №3 could never match a work order at №5 on
+# the same street, which cost roughly half of all real links (#28).
+_HOUSE_NUMBER_PREFIX = re.compile(r"^[0-9]+[A-Z]?\s*[,\-]?\s*")
+_HOUSE_NUMBER_SUFFIX = re.compile(r"\s+[0-9]+[A-Z]?$")
+
+
+def _street_name(street: str) -> str:
+    """The street part of an address line, with the house number removed."""
+    text = re.sub(r"\s+", " ", street.strip().upper())
+    text = _HOUSE_NUMBER_PREFIX.sub("", text)
+    text = _HOUSE_NUMBER_SUFFIX.sub("", text)
+    # Punctuation is inconsistent enough to be noise on its own.
+    text = re.sub(r"[^A-Z ]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _match_key(street: str | None, postcode: str | None) -> tuple[str, str] | None:
+    """Street and postcode — genuinely, which is what the site has always claimed.
+
+    Deliberately not postcode alone. 4% of postcodes carry more than one street
+    even after normalisation, so postcode-only would assert a link between
+    different streets, and its null model is half again as large for 328 extra
+    matches. Street level keeps the claim defensible.
+    """
     if not street or not postcode:
         return None
-    return (re.sub(r"\s+", " ", street.strip().upper()),
-            re.sub(r"\s+", " ", postcode.strip().upper()))
+    name = _street_name(street)
+    if not name:
+        return None
+    return (name, re.sub(r"\s+", " ", postcode.strip().upper()))
 
 
 def cross_links(conn: sqlite3.Connection) -> tuple[dict, dict]:

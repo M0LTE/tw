@@ -301,16 +301,18 @@
       <h3>Reports, and how they link to faults</h3>
       <ul>
         <li>Where a report and a work order share a street and postcode within a week of each other,
-          each links to the other. That is an <strong>association</strong> inferred from address and
-          timing — the two feeds share no reference number. Where more than one work order fits, all
-          are shown rather than one being picked.</li>
+          each links to the other. That is an <strong>association</strong> inferred from place and
+          timing — the two feeds share no reference number. It matches at street level, not house
+          number: Thames Water's address field is a single free-text line and a leak reported outside
+          one house is routinely worked on under the address of its neighbour. Where more than one
+          work order fits, all are shown rather than one being picked.</li>
         <li>A report leaving the map does not prove it became a work order, and a report can convert
           while its pin stays on the map — which is why the same address sometimes shows twice on
           Thames Water's map.</li>
         <li>&ldquo;Leak&rdquo; is Thames Water's label for the whole pending-pins layer, not a
           classification of each report; the feed carries no per-report problem type. Of reports that
-          match a work order raised soon after at the same address, about 95% are leak investigations,
-          but a few become flooding or blockage work.</li>
+          match a work order raised soon after on the same street, about 92% are leak investigations,
+          but a few become flooding, blockage or pollution work.</li>
       </ul>
 
       <h3>Places</h3>

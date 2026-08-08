@@ -65,7 +65,10 @@ function formatAge(days) {
 
 function titleCase(text) {
   if (!text) return '';
-  return text.replace(/\b[A-Z]{2,}\b/g, (word) => word[0] + word.slice(1).toLowerCase());
+  // Thames Water's address lines are inconsistently punctuated — "5,MANDEVILLE
+  // CLOSE" is theirs verbatim — so give a comma its space back before casing.
+  return text.replace(/,(?=\S)/g, ', ')
+    .replace(/\b[A-Z]{2,}\b/g, (word) => word[0] + word.slice(1).toLowerCase());
 }
 
 function place(fault) {
@@ -117,12 +120,12 @@ function renderReportLinks(matches, reportedDay) {
       <div class="when">raised ${escape(formatDate(m.raised))}, ${escape(lagPhrase(reportedDay, m.raised))}</div>
     </li>`).join('');
   return `
-    <h2 style="font-size:14px;margin:18px 0 10px">Work at this address</h2>
+    <h2 style="font-size:14px;margin:18px 0 10px">Work on this street</h2>
     <ul class="linklist">${items}</ul>
     <p class="footnote" style="margin-top:8px">
       ${matches.length > 1
-        ? `<strong>${matches.length} work orders</strong> were raised at this address in the window, so which (if any) followed from this report is ambiguous. All are shown.`
-        : 'Matched on street and postcode within a week of the report.'}
+        ? `<strong>${matches.length} work orders</strong> were raised on this street in the window, so which (if any) followed from this report is ambiguous. All are shown.`
+        : 'Matched on street and postcode within a week of the report — the same street, not necessarily the same building.'}
       The two feeds share no reference number, so this is an association rather than a confirmed link.
     </p>`;
 }
@@ -137,7 +140,7 @@ function renderFaultLinks(matches, raisedDay) {
     <h2 style="font-size:14px;margin:18px 0 10px">Reported by the public</h2>
     <ul class="linklist">${items}</ul>
     <p class="footnote" style="margin-top:8px">
-      Matched on street and postcode. The feeds share no reference number, so this is an
+      Matched on street and postcode — the same street, not necessarily the same building.\n      The feeds share no reference number, so this is an
       association rather than a confirmed link.</p>`;
 }
 
@@ -747,7 +750,7 @@ function renderReports() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${formatDate(r.reported)}</td>
-      <td title="Thames Water's label for this layer. Where a pin can be matched to a work order raised soon after at the same address, 98% are leak investigations — but the label is theirs, not a per-report classification">Leak</td>
+      <td title="Thames Water's label for this layer. Where a pin can be matched to a work order raised soon after on the same street, 92% are leak investigations — but the label is theirs, not a per-report classification">Leak</td>
       <td class="num age age-${ageClass(r.age)}">${formatAge(r.age)}</td>
       <td class="wrap">${locationCell(r, r.town)}</td>
       <td>${escape(titleCase(r.town || ''))}</td>
@@ -807,7 +810,7 @@ function openReportDetail(r) {
     <p class="footnote" style="margin:0 0 18px">&ldquo;Leak&rdquo; is Thames Water's label for this
     whole layer, not a classification of this report: the feed carries no per-report problem type
     (<code>ProblemType</code> is <code>1</code> on every pin). It is broadly accurate — where a pin
-    can be matched to a work order raised soon after at the same address, 98% are leak
+    can be matched to a work order raised soon after on the same street, 92% are leak
     investigations — but a small number become flooding or blockage work instead.</p>
     <h2 style="font-size:14px;margin:0 0 10px">What we have seen</h2>
     <ul class="timeline">

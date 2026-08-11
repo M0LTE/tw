@@ -15,6 +15,61 @@
   ],
   "entries": [
     {
+      "date": "2026-08-11",
+      "title": "A job can be finished a day before their map admits it",
+      "summary": "A work order stays on Thames Water's map for exactly 24 or 72 hours after they close it. And departures are now almost always confirmed — up from about 70% before.",
+      "body": [
+        {
+          "p": "Two things have changed in how much this site can tell you, and both are worth knowing if you are watching a problem of your own."
+        },
+        {
+          "p": "**A closed job lingers on the map.** Every work order carries a field saying how many hours it should remain on the map. It turns out to mean exactly that, and it is now measurable: comparing Thames Water's own closure timestamp against the moment a record actually stopped being published gives an extremely tight answer."
+        },
+        {
+          "table": {
+            "head": ["Map retention set to", "Records measured", "Actually left the map after"],
+            "rows": [
+              ["24 hours", "1,693", "26.0 hours (90% between 25.6 and 26.5)"],
+              ["72 hours", "314", "73.9 hours (90% between 73.4 and 74.4)"]
+            ]
+          }
+        },
+        {
+          "p": "So a fault still shown as open on their map may have been closed up to a day ago — three days for the minority set to 72 hours. The extra two hours are our own hourly checking, not theirs. If you are watching a job, the disappearance is the *last* signal you get, not the first."
+        },
+        {
+          "p": "It also means this site has been overstating how long repairs take, because it measured to the day a record vanished rather than the day it was closed. The gap is about **1.1 days** on a typical case. That is small against a median measured in weeks, but it is a bias in one direction and it is now known."
+        },
+        {
+          "p": "**Departures are now nearly always confirmed.** When a work order leaves the map, Thames Water's separate closed feed may or may not confirm what happened to it. That confirmation has improved sharply over the past week:"
+        },
+        {
+          "table": {
+            "head": ["Work orders leaving the map on", "Number", "Confirmed by the closed feed"],
+            "rows": [
+              ["4 August (before the data loss)", "93", "72.0%"],
+              ["5 August (the data loss)", "14,048", "2.7%"],
+              ["7 August", "627", "81.8%"],
+              ["9 August", "491", "94.5%"],
+              ["11 August", "317", "97.2%"]
+            ]
+          }
+        },
+        {
+          "p": "Over the same week the closed feed roughly tripled — waste water from about 1,500 records to 4,644, clean water from about 500 to 2,171. Whether Thames Water started publishing more of it or simply kept it for longer, we cannot tell from outside. The effect either way is that **\"cleared\" on this site now usually means something**: for most departures there is now a *Completed* or *Canceled* verdict behind it rather than a record that merely stopped appearing."
+        },
+        {
+          "p": "That is a real improvement in what can honestly be said here, and it is Thames Water's doing, not ours."
+        },
+        {
+          "p": "**The 5 August losses have still not returned.** The map has carried between roughly 7,000 and 7,350 open work orders every day since, standing at 7,346 today. No further collection has been flagged: whatever happened that evening happened once."
+        }
+      ],
+      "refs": [
+        { "label": "Issue #29 — the working behind these figures", "url": "https://github.com/M0LTE/tw/issues/29" }
+      ]
+    },
+    {
       "date": "2026-08-08",
       "title": "Leaks sit for years. Sewage problems do not.",
       "summary": "800 clean water work orders have been open for more than a year. The waste water figure is 21.",

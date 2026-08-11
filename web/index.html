@@ -44,6 +44,14 @@
   <section id="view-overview" class="view" hidden>
     <div class="kpis" id="kpis"></div>
 
+    <div class="range-bar">
+      <span>Charts show</span>
+      <button data-range="2">48 hours</button>
+      <button data-range="7" class="active">7 days</button>
+      <button data-range="30">30 days</button>
+      <button data-range="">All time</button>
+    </div>
+
     <section class="card">
       <header>
         <h2>The backlog</h2>
@@ -58,7 +66,9 @@
       <header>
         <h2>Arriving vs clearing</h2>
         <p>New faults appearing between collections against faults dropping off the map. The first
-           collection is excluded, since everything appears at once on that one.</p>
+           collection is excluded, since everything appears at once on that one. A hatched column
+           marks a collection where records stopped being published in bulk without confirmation:
+           those are not counted as cleared, and hovering gives the number.</p>
       </header>
       <div class="chart-host" id="chart-flow"></div>
       <div class="legend">
@@ -288,10 +298,15 @@
           records the counts and changes nothing. A drop is never rejected for being too large —
           &ldquo;too big to be true&rdquo; is not a test of the data, and refusing observations on
           those grounds would put our judgement ahead of the measurement.</li>
-        <li>When an unusual share of records vanishes at once, the collection is <strong>flagged</strong>.
-          Those departures are recorded and browsable, but they are kept out of the time-to-clear
-          figures unless the closed feed corroborates them, so a single source-side event cannot
-          rewrite every median here. The number excluded is published with them.</li>
+        <li>When an unusual share of records vanishes at once and Thames Water's closed feed
+          confirms almost none of it, the collection is <strong>flagged</strong>. Those departures
+          are recorded and browsable, but they are kept out of the time-to-clear figures and are not
+          drawn as clearing, so a single source-side event cannot rewrite every median here. The
+          number excluded is published with them.</li>
+        <li>The overview charts default to a <strong>recent window</strong>, with the full history a
+          click away. One collection on 5 August 2026 removed two thirds of the backlog, and a drop
+          that size cannot share a vertical axis with ordinary week-to-week movement without making
+          it invisible.</li>
         <li>Anything that would otherwise leave a figure here unexplained gets a dated entry under
           <strong>Notes</strong>, with the evidence behind it. That is the one part of this site that
           is written rather than counted: the change log can show that thousands of work orders

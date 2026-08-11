@@ -63,6 +63,12 @@
         },
         {
           "p": "**The 5 August losses have still not returned.** The map has carried between roughly 7,000 and 7,350 open work orders every day since, standing at 7,346 today. No further collection has been flagged: whatever happened that evening happened once."
+        },
+        {
+          "p": "**A correction, while fixing the charts.** The headline \"typical time to clear\" on this site has been badly wrong, and it has now moved from 22 days to **3 days**. The 5 August losses were mostly work that had been open for months, and counting the moment they stopped being published as the moment they were fixed put a 72-day median into the figure. It was measuring a data loss as though it were repairs."
+        },
+        {
+          "p": "3 days is the honest number: departures before the event ran to a median of 1.5 days and those after it to 3.0 days, so the corrected figure sits where both cohorts already were. The 22 days was an artefact throughout. Those 13,446 uncorroborated departures are still recorded and still browsable — they are simply no longer counted as evidence of anything being fixed, and the figure now says how many it leaves out."
         }
       ],
       "refs": [

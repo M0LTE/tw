@@ -24,6 +24,8 @@ const state = {
   today: 0,
   view: 'overview',
   mode: 'open',
+  // Overview chart window, in days. null = everything.
+  range: 7,
   filters: { search: '', source: '', status: '', journey: '', minAge: '', clearedWithin: '', verdict: '' },
   sort: { key: 'age', dir: -1 },
   page: 0,
@@ -344,19 +346,30 @@ function renderKPIs() {
   );
 }
 
+// A 63% cliff cannot share a vertical axis with ordinary movement: since
+// 5 August the backlog has lived in a ~4% band that the drop renders invisible.
+// Windowing lets the charts answer "what is happening now" while the whole
+// history stays a click away, where the cliff is the story rather than noise.
+function inRange(rows) {
+  if (!state.range || !rows.length) return rows;
+  const newest = rows[rows.length - 1].t;
+  return rows.filter((r) => r.t > newest - state.range * 86400);
+}
+
 function renderOverview() {
   const s = state.summary;
   renderKPIs();
 
+  const backlog = inRange(s.backlog);
   areaChart($('#chart-backlog'), [{
     key: 'total',
     label: 'Open faults',
     colour: 'var(--accent)',
-    values: s.backlog.map((row) => ({ x: row.t, y: row.total })),
+    values: backlog.map((row) => ({ x: row.t, y: row.total })),
   }], { stacked: false, zeroBased: false });
 
-  const latest = s.backlog[s.backlog.length - 1] || {};
-  const first = s.backlog[0] || {};
+  const latest = backlog[backlog.length - 1] || {};
+  const first = backlog[0] || {};
   const net = (latest.total || 0) - (first.total || 0);
   $('#legend-backlog').innerHTML =
     `<span>Now <strong>${formatNumber(latest.total)}</strong> open — ` +
@@ -364,10 +377,11 @@ function renderOverview() {
     // and report feeds are in `sources` too and would show as zeros.
     s.sources.filter((src) => src.key in latest)
       .map((src) => `${formatNumber(latest[src.key])} ${escape(src.label.toLowerCase())}`).join(', ') +
-    `</span><span>Since tracking began <strong>${net > 0 ? '+' : ''}${formatNumber(net)}</strong></span>` +
+    `</span><span>${state.range ? `Over ${state.range} days` : 'Since tracking began'} ` +
+    `<strong>${net > 0 ? '+' : ''}${formatNumber(net)}</strong></span>` +
     `<span class="pinned">Vertical axis does not start at zero</span>`;
 
-  flowChart($('#chart-flow'), s.flow);
+  flowChart($('#chart-flow'), inRange(s.flow));
 
   // Buckets are exclusive ranges, so label them as ranges rather than "≤ n".
   const bucketLabels = [
@@ -1084,6 +1098,17 @@ function wireUp() {
     $(id).addEventListener('change', (e) => { state.filters[key] = e.target.value; applyFilters(); });
   }
 
+  for (const button of document.querySelectorAll('.range-bar button')) {
+    button.addEventListener('click', () => {
+      state.range = button.dataset.range ? Number(button.dataset.range) : null;
+      for (const other of document.querySelectorAll('.range-bar button')) {
+        other.classList.toggle('active', other === button);
+      }
+      renderOverview();
+      renderBacklogNote(state.summary.truncated);
+    });
+  }
+
   $('#f-mode').addEventListener('change', (e) => {
     state.mode = e.target.value;
     // Sorting by clearance date is the whole reason for this mode; age is the
@@ -1155,7 +1180,13 @@ function wireUp() {
 function renderBacklogNote(info) {
   const host = $('#backlog-note');
   if (!host) return;
-  if (!info) { host.hidden = true; return; }
+  // Only when the collection it describes is actually on screen: pointing at
+  // "the step on 5 August" under a chart that starts on the 9th is worse than
+  // saying nothing.
+  const visible = info && (!state.range
+    || Date.parse(info.observed_at) / 1000 > state.summary.backlog[state.summary.backlog.length - 1].t
+       - state.range * 86400);
+  if (!visible) { host.hidden = true; return; }
   const when = new Date(info.observed_at)
     .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   const iso = info.observed_at.slice(0, 10);

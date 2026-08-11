@@ -343,3 +343,16 @@ td.rate { position: relative; min-width: 130px; }
 .note-table td.num, .note-table th:not(:first-child) { text-align: right; }
 .note-refs { margin-top: 14px; }
 .note-refs a { margin-right: 4px; }
+
+/* Chart window control. The 5 August collapse cannot share a vertical axis
+   with ordinary movement, so the default is a recent window and the whole
+   history is one click away. */
+.range-bar { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+.range-bar button {
+  font: inherit; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-dim);
+}
+.range-bar button:hover { border-color: var(--text-dim); }
+.range-bar button.active {
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+}

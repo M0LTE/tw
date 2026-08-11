@@ -314,6 +314,62 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(result["resolution"]["quarantined"], 2, "C and D are not evidence")
         self.assertEqual(result["resolution"]["n"], 1, "only the corroborated departure counts")
 
+    def test_bulk_uncorroborated_departures_are_detected_after_the_fact(self):
+        """#30 — the live guard misses collections that fall under its threshold.
+
+        The 5 August 18:47 collapse took 4,142 records at 0.1% corroboration and
+        was never flagged, because it was only ~20% of the total at the time. It
+        still is not evidence of clearing, and drawn as such it is a bar 200x the
+        median. Both tests are required: a large *confirmed* batch is real work.
+        """
+        from collector import build_site
+
+        day0 = records(*(feature(f"F{i}") for i in range(60)))
+        self.poll(0, day0, {}, set())
+
+        # A big, wholly unconfirmed departure: 50 of 60 vanish, none closed.
+        stamp = dt.datetime(2026, 1, 2, tzinfo=dt.timezone.utc).isoformat()
+        keep = records(*(feature(f"F{i}") for i in range(10)))
+        store.write_delta(self.deltas, build_delta(stamp, keep, {"waste": 10}, day0, set(day0)))
+        # Then ordinary churn, comfortably under the multiple.
+        for day, n in ((2, 9), (3, 8), (4, 7), (5, 6)):
+            later = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc) + dt.timedelta(days=day)
+            nxt = records(*(feature(f"F{i}") for i in range(n)))
+            store.write_delta(self.deltas, build_delta(
+                later.isoformat(), nxt, {"waste": n},
+                records(*(feature(f"F{i}") for i in range(n + 1))), set(day0)))
+
+        conn = self.replay()
+        conn.row_factory = sqlite3.Row
+        flagged = build_site.uncorroborated_bulk_departures(conn)
+        conn.close()
+        self.assertIn(stamp, flagged, "a huge unconfirmed departure is not evidence of clearing")
+        self.assertEqual(len(flagged), 1, "ordinary churn must not be swept up")
+
+    def test_a_large_but_confirmed_departure_is_not_flagged(self):
+        # The other half of the test: if Thames Water's closed feed says the work
+        # was done, a big batch is real work and must count.
+        from collector import build_site
+
+        day0 = records(*(feature(f"F{i}") for i in range(60)))
+        self.poll(0, day0, {}, set())
+
+        stamp = dt.datetime(2026, 1, 2, tzinfo=dt.timezone.utc).isoformat()
+        keep = records(*(feature(f"F{i}") for i in range(10)))
+        delta = build_delta(stamp, keep, {"waste": 10}, day0, set(day0))
+        delta.for_kind(sources.CLOSED).appeared = {
+            k: v for k, v in records(
+                *(feature(f"F{i}", WorkOrderStatus="Completed") for i in range(10, 60)),
+                source="waste_closed").items()
+        }
+        store.write_delta(self.deltas, delta)
+
+        conn = self.replay()
+        conn.row_factory = sqlite3.Row
+        flagged = build_site.uncorroborated_bulk_departures(conn)
+        conn.close()
+        self.assertNotIn(stamp, flagged, "a confirmed batch is work, however large")
+
     def test_a_truncated_delta_is_never_considered_empty(self):
         # `is_empty` gates whether a delta is written at all; a counts-only
         # observation has no record ops and would otherwise be dropped.

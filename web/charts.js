@@ -165,6 +165,19 @@ export function barChart(container, items, { horizontal = false, valueFormat = f
   container.replaceChildren(wrap);
 }
 
+// Diagonal hatching, defined inline so the chart stays self-contained and
+// theme-aware — the stroke picks up the current text colour.
+function hatchPattern() {
+  const defs = el('defs');
+  const pattern = el('pattern', {
+    id: 'withheld', width: 6, height: 6, patternUnits: 'userSpaceOnUse',
+    patternTransform: 'rotate(45)',
+  });
+  pattern.append(el('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: 'var(--text-dim)', 'stroke-width': 1.2, opacity: 0.35 }));
+  defs.append(pattern);
+  return defs;
+}
+
 /** Two-series overlaid bars, for "raised vs resolved" per day. */
 export function flowChart(container, rows) {
   if (rows.length < 2) {
@@ -179,6 +192,7 @@ export function flowChart(container, rows) {
   const y = (v) => H - pad.bottom - (v / yMax) * (H - pad.top - pad.bottom);
 
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart' });
+  if (rows.some((r) => r.withheld)) svg.append(hatchPattern());
   for (const tick of niceTicks(0, yMax)) {
     svg.append(el('line', { x1: pad.left, x2: W - pad.right, y1: y(tick), y2: y(tick), class: 'grid' }));
     svg.append(el('text', { x: pad.left - 8, y: y(tick) + 4, class: 'axis', 'text-anchor': 'end' }, formatNumber(tick)));
@@ -189,9 +203,23 @@ export function flowChart(container, rows) {
     const w = Math.max(1, bw * 0.38);
     svg.append(el('rect', { x: x0 + bw * 0.06, y: y(r.raised), width: w, height: y(0) - y(r.raised), fill: 'var(--c-raised)' }));
     svg.append(el('rect', { x: x0 + bw * 0.52, y: y(r.resolved), width: w, height: y(0) - y(r.resolved), fill: 'var(--c-resolved)' }));
+
+    // Departures a source-side event produced are not clearing and are not
+    // drawn as it — but nor are they hidden. A hatched full-height band says
+    // "something happened here that is deliberately not in the bars", which is
+    // the honest rendering of a withheld count.
+    if (r.withheld) {
+      svg.append(el('rect', {
+        x: x0, y: pad.top, width: bw, height: H - pad.top - pad.bottom,
+        fill: 'url(#withheld)', stroke: 'var(--text-dim)', 'stroke-width': 0.5,
+        'stroke-dasharray': '2 2',
+      }));
+    }
+
     // Invisible full-height hit area so the whole column shows a tooltip.
     const hit = el('rect', { x: x0, y: pad.top, width: bw, height: H - pad.top - pad.bottom, fill: 'transparent' });
-    hit.append(el('title', {}, `${new Date(r.t * 1000).toLocaleString('en-GB')}: ${r.raised} new, ${r.resolved} cleared`));
+    hit.append(el('title', {}, `${new Date(r.t * 1000).toLocaleString('en-GB')}: ${r.raised} new, ${r.resolved} cleared`
+      + (r.withheld ? ` — plus ${r.withheld.toLocaleString('en-GB')} that stopped being published without confirmation, not counted as cleared` : '')));
     svg.append(hit);
   });
 

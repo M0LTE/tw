@@ -285,6 +285,46 @@ def _peak_work_orders_before(conn: sqlite3.Connection, before: str, days: int = 
     return max(sum(json.loads(r["source_counts"]).get(k, 0) for k in keys) for r in rows)
 
 
+# A collection's departures are treated as not-evidence-of-clearing when they
+# are both far above the norm and almost entirely uncorroborated. Both tests
+# together, because either alone is wrong: a big batch that the closed feed
+# confirms is real work, and a small uncorroborated batch is ordinary noise.
+BULK_DEPARTURE_MULTIPLE = 20      # times the median collection
+BULK_DEPARTURE_CONFIRMED = 0.10   # share the closed feed corroborates
+
+
+def uncorroborated_bulk_departures(conn: sqlite3.Connection) -> set[str]:
+    """Collections whose departures cannot be read as work being cleared.
+
+    Note carefully what this is *not*: it is not the ingestion guard. Every one
+    of these records was believed, stored and is browsable under Faults →
+    Cleared. #24 settled that a poll verified as complete gets recorded however
+    implausible it looks, and that stands. This is the separate, downstream
+    question of whether a departure counts as *evidence* — and the answer has
+    been "only if the closed feed corroborates it" since #24 too. This just
+    applies that test at collection level so it also catches the 5 August 18:47
+    collapse, which the live guard never flagged because it fell under the
+    threshold at the time.
+
+    Without it a single collection contributes a bar 200x the median and the
+    chart it sits in conveys nothing (#30).
+    """
+    rows = conn.execute(
+        "SELECT f.resolved_at AS moment, COUNT(*) AS n, "
+        "       SUM(CASE WHEN cf.id IS NOT NULL THEN 1 ELSE 0 END) AS confirmed "
+        "FROM faults f LEFT JOIN closed_faults cf ON cf.id = f.id "
+        "WHERE f.resolved_at IS NOT NULL GROUP BY f.resolved_at"
+    ).fetchall()
+    if not rows:
+        return set()
+    typical = statistics.median(r["n"] for r in rows) or 1
+    return {
+        r["moment"] for r in rows
+        if r["n"] > typical * BULK_DEPARTURE_MULTIPLE
+        and r["confirmed"] / r["n"] < BULK_DEPARTURE_CONFIRMED
+    }
+
+
 def anomalous_snapshots(conn: sqlite3.Connection) -> set[str]:
     """Snapshots where an unusual share of known records stopped appearing.
 
@@ -296,11 +336,12 @@ def anomalous_snapshots(conn: sqlite3.Connection) -> set[str]:
     corroborates it — Thames Water saying "Completed" is evidence; the record
     merely ceasing to be published is not (#24).
     """
-    return {
+    flagged = {
         row[0] for row in conn.execute(
             "SELECT observed_at FROM snapshots WHERE anomalous IS NOT NULL"
         )
     }
+    return flagged | uncorroborated_bulk_departures(conn)
 
 
 def _percentiles(values: list[float]) -> dict[str, float | None]:
@@ -378,6 +419,9 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
     observed = [r[0] for r in conn.execute("SELECT observed_at FROM snapshots ORDER BY observed_at")]
     first_snapshot = observed[0] if observed else None
     spans = conn.execute("SELECT first_seen_at, resolved_at, source FROM faults").fetchall()
+    flagged = anomalous_snapshots(conn)
+    corroborated = {r[0] for r in conn.execute("SELECT id FROM closed_faults")}
+    departures = conn.execute("SELECT id, resolved_at FROM faults WHERE resolved_at IS NOT NULL").fetchall()
 
     backlog: list[dict] = []
     flow: list[dict] = []
@@ -394,17 +438,30 @@ def summary(conn: sqlite3.Connection, today: dt.date) -> dict:
         # The first snapshot is everything arriving at once, which is an artefact
         # of starting to look rather than a day's worth of faults.
         if i:
+            # A chart called "arriving vs clearing" has to apply the same test as
+            # the duration figures: departures from a flagged collection are not
+            # evidence anything was cleared unless the closed feed says so. Drawn
+            # as clearing they are also 558x the median bar, which flattens every
+            # other collection to nothing (#30). Reported separately so the site
+            # can mark the collection rather than silently dropping the count.
+            if moment in flagged:
+                gone = sum(1 for r in departures
+                           if r["resolved_at"] == moment and r["id"] in corroborated)
+                withheld = sum(1 for r in departures if r["resolved_at"] == moment) - gone
+            else:
+                gone = sum(1 for r in spans if r["resolved_at"] == moment)
+                withheld = 0
             flow.append({
                 "t": stamp,
                 "raised": sum(1 for r in spans if r["first_seen_at"] == moment),
-                "resolved": sum(1 for r in spans if r["resolved_at"] == moment),
+                "resolved": gone,
+                **({"withheld": withheld} if withheld else {}),
             })
 
     # Time to resolution, for faults we watched from start to finish.
     cutoff = (today - dt.timedelta(days=RESOLVED_WINDOW_DAYS)).isoformat()
     # Departures seen in a flagged snapshot are excluded unless Thames Water's
     # own closed feed corroborates them; see `anomalous_snapshots`.
-    flagged = anomalous_snapshots(conn)
     candidates = conn.execute(
         "SELECT f.source, f.journey_type, f.raised_at, f.first_seen_at, f.resolved_at,"
         "       cf.id AS corroborated "

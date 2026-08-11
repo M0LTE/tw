@@ -218,11 +218,18 @@ These matter if you are going to quote the numbers at anyone.
   data-integrity property, and a guard that discards observations on those grounds would put our
   editorial judgement ahead of the measurement. A drop that large instead flags the snapshot as
   `anomalous`.
-- **Departures in a flagged snapshot are excluded from the duration figures** unless Thames
-  Water's own closed feed corroborates them, and the excluded count is published alongside. On
-  2026-08-05 their feed shed 9,620 work orders in a single hour; every one is recorded and
-  browsable, but letting them into the time-to-clear percentiles would have rewritten every
-  median on the site off the back of one source-side event.
+- **Departures in a flagged collection are excluded from the duration figures** unless Thames
+  Water's own closed feed corroborates them, and the excluded count is published alongside. They
+  are also not drawn as "clearing" on the flow chart. A collection counts as flagged either from
+  the live guard or, after the fact, when its departures exceed 20× the median collection *and*
+  under 10% are corroborated — both tests, since a large confirmed batch is real work and a small
+  unconfirmed one is noise. This is a test of what counts as *evidence*, not of what gets
+  recorded: everything is stored and browsable regardless (see #24, #30).
+
+  It matters more than it sounds. On 2026-08-05 their feed shed ~13,600 work orders, mostly work
+  that had been open for months; counting their disappearance as repair put the site's headline
+  time-to-clear at **22 days** when departures either side of the event ran at 1.5 and 3.0 days.
+  The corrected figure is 3 days.
 - **History starts the day collection starts.** Ages come from Thames Water's raised dates
   and so reach back to 2023, but backlog and flow trends only begin from the first snapshot.
 - **Work order timestamps are published as UK local time with a UTC label.** We convert them

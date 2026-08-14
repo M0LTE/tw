@@ -96,6 +96,17 @@
       </section>
     </div>
 
+    <section class="card" id="card-stages">
+      <header>
+        <h2>Where the backlog is stuck</h2>
+        <p>Thames Water publishes a lifecycle for each work order. This is where open faults are
+           sitting now, and how long since each last moved. Times are &ldquo;at least&rdquo;: we
+           cannot see behind the day collection started, so a fault may have been at its stage far
+           longer.</p>
+      </header>
+      <div id="stages-body"></div>
+    </section>
+
     <section class="card" id="card-closure">
       <header>
         <h2>Fixed, or just gone?</h2>
@@ -286,6 +297,12 @@
           A minority of closed records carry a real closure date; most do not.</li>
         <li>Faults sometimes drop out and come back between collections. Those are counted once and
           flagged, not double-counted as new.</li>
+        <li><strong>Where the backlog is stuck</strong> counts open faults by lifecycle stage and how
+          long since each last moved. It deliberately does not give an average time per stage: a stage
+          visit can only be timed when both its start and end are seen, so with a short history that
+          average would measure only the visits quick enough to fit inside it. It would have read
+          &ldquo;four hours in Investigation&rdquo; while three quarters of the faults there had not
+          moved in a week.</li>
         <li>The Faults tab switches between <strong>still open</strong> and <strong>cleared</strong>,
           and cleared faults can be filtered by when they went, down to the last hour. That is the way
           to see what a sudden movement in the backlog actually consisted of — and to check how much of

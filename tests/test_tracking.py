@@ -370,6 +370,61 @@ class ReplayTests(unittest.TestCase):
         conn.close()
         self.assertNotIn(stamp, flagged, "a confirmed batch is work, however large")
 
+    def test_stage_buckets_never_exceed_the_observation_window(self):
+        """#4 — a threshold we cannot observe must not be published as zero.
+
+        A "held over 30 days" column, printed after ten days of watching, is a
+        column of zeros that reads as "nothing is stuck" while meaning "we have
+        not looked long enough to know". Buckets appear only as the history
+        earns them.
+        """
+        from collector import build_site
+
+        day0 = records(feature("A"), feature("B"))
+        self.poll(0, day0, {}, set())
+        self.poll(2, records(feature("A", WorkOrderStatus="Investigation"), feature("B")),
+                  day0, {"A", "B"})
+
+        conn = self.replay()
+        conn.row_factory = sqlite3.Row
+        result = build_site.stage_occupancy(conn)
+        conn.close()
+
+        # Two days of history: the 1-day bucket is earned, 7 and 30 are not.
+        self.assertEqual(result["bucket_days"], [1])
+        for stage in result["stages"]:
+            self.assertEqual(len(stage["buckets"]), 1, stage["stage"])
+
+    def test_stage_occupancy_counts_only_open_faults(self):
+        from collector import build_site
+
+        day0 = records(feature("A"), feature("B"), feature("C"))
+        self.poll(0, day0, {}, set())
+        # C departs; it must not be counted as sitting at a stage.
+        self.poll(1, records(feature("A"), feature("B")), day0, {"A", "B", "C"})
+
+        conn = self.replay()
+        conn.row_factory = sqlite3.Row
+        result = build_site.stage_occupancy(conn)
+        conn.close()
+        self.assertEqual(sum(s["n"] for s in result["stages"]), 2,
+                         "a departed fault is not stuck anywhere")
+
+    def test_backwards_transitions_are_counted(self):
+        from collector import build_site
+
+        day0 = records(feature("A", WorkOrderStatus="Repair Underway"))
+        self.poll(0, day0, {}, set())
+        back = records(feature("A", WorkOrderStatus="Investigation"))
+        self.poll(1, back, day0, {"A"})
+
+        conn = self.replay()
+        conn.row_factory = sqlite3.Row
+        result = build_site.stage_occupancy(conn)
+        conn.close()
+        self.assertEqual(result["backwards_total"], 1)
+        self.assertEqual(result["backwards"][0][0], "Repair Underway → Investigation")
+
     def test_a_truncated_delta_is_never_considered_empty(self):
         # `is_empty` gates whether a delta is written at all; a counts-only
         # observation has no record ops and would otherwise be dropped.

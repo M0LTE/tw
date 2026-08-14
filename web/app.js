@@ -1199,6 +1199,43 @@ function renderBacklogNote(info) {
       + `<a href="#notes" data-note="${escape(iso)}">read the note</a>.`;
 }
 
+// Where the open backlog is sitting. Deliberately a censored view rather than
+// median time-in-stage: see stage_occupancy in build_site.py for why the median
+// is computable and wrong.
+function renderStages(d) {
+  const host = $('#stages-body');
+  if (!host) return;
+  if (!d || !d.stages.length) { host.innerHTML = '<p class="footnote">Not enough history yet.</p>'; return; }
+
+  const total = d.stages.reduce((a, s) => a + s.n, 0);
+  const head = d.bucket_days.map((b) =>
+    `<th>Not moved for ${b === 1 ? '24 hours' : `${b} days`}</th>`).join('');
+  const rows = d.stages.map((s) => `
+    <tr>
+      <td>${escape(s.stage)}</td>
+      <td class="num">${formatNumber(s.n)}</td>
+      <td class="num">${(100 * s.n / total).toFixed(1)}%</td>
+      ${s.buckets.map((n) => `<td class="num">${formatNumber(n)}` +
+        `<span class="pinned"> (${Math.round(100 * n / s.n)}%)</span></td>`).join('')}
+    </tr>`).join('');
+
+  const back = d.backwards.length ? `
+    <h3 style="font-size:13.5px;margin:20px 0 6px">Work that went backwards</h3>
+    <p class="footnote" style="margin:0 0 8px">Thames Water moved these back to an earlier stage —
+      a repair that did not hold, or a job reopened. ${formatNumber(d.backwards_total)} observed so far.</p>
+    <ul class="linklist">${d.backwards.map(([label, n]) =>
+      `<li><strong>${formatNumber(n)}</strong> — ${escape(label)}</li>`).join('')}</ul>` : '';
+
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Stage</th><th>Open here</th><th>Share</th>${head}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <p class="footnote">A fault counted as "not moved" may still be being worked on — this is
+      the published status changing, not the work.</p>
+    ${back}`;
+}
+
 // ── Notes ───────────────────────────────────────────────────────
 //
 // Dated narrative entries from data/notes.json. This replaced a banner across
@@ -1314,6 +1351,7 @@ async function main() {
     renderOldest();
     renderFlooding();
     renderClosure();
+    renderStages(state.summary.stages);
     renderPlaces();
     renderReportsBlurb();
     applyFilters();

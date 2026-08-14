@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
-from .model import STATUS_ORDER
+from .model import STATUS_ORDER, STATUS_RANK
 from . import sources
 from .sources import SOURCES
 
@@ -263,6 +263,78 @@ def notes() -> dict:
 
     entries.sort(key=lambda e: e["date"], reverse=True)
     return {"entries": entries}
+
+
+def stage_occupancy(conn: sqlite3.Connection) -> dict:
+    """Where the open backlog is sitting, and how long it has sat there.
+
+    Deliberately *not* median time-in-stage. That figure is computable and
+    wrong: a dwell is only complete when both the arrival and the departure are
+    observed, so with a 10-day window we can only ever see visits shorter than
+    10 days. The observed Investigation median came out at 0.17 days while
+    2,194 of the 2,991 faults actually sitting in Investigation had not moved
+    for over 5 days — the statistic measures the visits fast enough to fit in
+    the window, and calls it the typical visit. That is the mistake #5 exists
+    to warn about, applied to stages instead of totals.
+
+    What is honest is the censored view: how long each *currently open* fault
+    has been at its stage, reported as "at least", because we cannot see behind
+    the start of collection. Every fault counted here is one Thames Water is
+    publishing as open right now, so nothing is inferred.
+    """
+    moved = {
+        row["fault_id"]: row["last"] for row in conn.execute(
+            "SELECT fault_id, max(observed_at) AS last FROM fault_events "
+            "WHERE kind = 'changed' AND field = 'status' GROUP BY fault_id"
+        )
+    }
+    latest = conn.execute("SELECT max(observed_at) FROM snapshots").fetchone()[0]
+    if not latest:
+        return {"stages": [], "bucket_days": [], "backwards": [], "backwards_total": 0}
+    now = dt.datetime.fromisoformat(latest)
+
+    # Only thresholds the observation window can actually support. Publishing a
+    # "held over 30 days" column while we have watched for 10 would print a
+    # column of zeros that reads as "none are stuck", which is the opposite of
+    # what it would mean. Buckets appear as the history grows.
+    first = conn.execute("SELECT min(observed_at) FROM snapshots").fetchone()[0]
+    window = (now - dt.datetime.fromisoformat(first)).total_seconds() / 86400 if first else 0
+    buckets = tuple(b for b in (1, 7, 30, 90) if b <= window)
+    stages: list[dict] = []
+    for stage in STATUS_ORDER:
+        rows = conn.execute(
+            "SELECT id, first_seen_at FROM faults WHERE is_open = 1 AND status = ?", (stage,)
+        ).fetchall()
+        if not rows:
+            continue
+        # Since the last status change, or since we first saw it — whichever is
+        # later is the most we can honestly claim.
+        held = []
+        for row in rows:
+            since = max(moved.get(row["id"], ""), row["first_seen_at"])
+            held.append((now - dt.datetime.fromisoformat(since)).total_seconds() / 86400)
+        stages.append({
+            "stage": stage,
+            "n": len(held),
+            "buckets": [sum(1 for d in held if d >= b) for b in buckets],
+        })
+
+    backwards: collections.Counter = collections.Counter()
+    events: dict[str, list[str]] = collections.defaultdict(list)
+    for row in conn.execute(
+        "SELECT fault_id, old_value, new_value FROM fault_events "
+        "WHERE kind = 'changed' AND field = 'status' AND old_value IS NOT NULL"
+    ):
+        a, b = STATUS_RANK.get(row["old_value"]), STATUS_RANK.get(row["new_value"])
+        if a is not None and b is not None and b < a:
+            backwards[f"{row['old_value']} → {row['new_value']}"] += 1
+
+    return {
+        "stages": stages,
+        "bucket_days": list(buckets),
+        "backwards": backwards.most_common(5),
+        "backwards_total": sum(backwards.values()),
+    }
 
 
 def _peak_work_orders_before(conn: sqlite3.Connection, before: str, days: int = 7) -> int | None:
@@ -904,6 +976,7 @@ def build(db_path: Path, out: Path) -> None:
     payload["areas"] = areas(conn, today)
     payload["external_flooding"] = external_sewer_flooding(conn, today)
     payload["closure"] = closure_outcomes(conn)
+    payload["stages"] = stage_occupancy(conn)
     by_report, by_fault = cross_links(conn)
     payload["links"] = {"reports_matched": len(by_report), "faults_matched": len(by_fault)}
     _write(out / "summary.json", payload)

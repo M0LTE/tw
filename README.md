@@ -118,6 +118,15 @@ tell a repair from a cancellation.
 
 `snapshots` — one row per collection run, with per-source counts.
 
+**Stage occupancy is reported censored, not averaged.** `build_site.stage_occupancy` counts open
+faults by lifecycle stage and how long since each last moved, as an "at least". A mean or median
+time-in-stage is computable and would be wrong: a dwell can only be measured when both entry and
+exit are observed, so a window of *n* days can only ever contain visits shorter than *n* days. On
+the data that first produced it, the observed Investigation median was 0.17 days while 2,194 of the
+2,991 faults sitting in Investigation had not moved for over five days. Bucket thresholds appear
+only once the observation window can support them, so a "held over 30 days" column never prints a
+misleading zero.
+
 `data/notes.json` is the site's narrative log — hand-written, dated entries explaining anything
 that would otherwise leave a figure unexplained. It is the only content on the site not derived
 from the change log, because it is the only part that needs judgement: the data can show that

@@ -262,8 +262,21 @@ These matter if you are going to quote the numbers at anyone.
   exact house-number and punctuation match and missed roughly half the real links (#28). A leak
   outside one house is routinely worked on under a neighbour's address.
 
-  A null model — same addresses, dates shifted by 30 to 90 days — produces 18 matches against
-  those 1,029 real ones, so the links are not coincidence. That still does not give a conversion
+  **A third of these matches would happen anyway.** The null model permutes which address belongs
+  to which report while holding the dates fixed, so every report faces the same pool of work orders
+  the real one did and only the address-to-time pairing is destroyed. It reproduces 631 of the 1,850
+  matches — a signal of 2.9x, and an attributable excess of ~1,219. Run it with
+  `python -m collector.checks --null-model`.
+
+  The earlier date-shifting null claimed 99-100% genuine. It was measuring a different and much
+  easier thing: work order raise density runs 112/day in May against 218/day in August, so shifting
+  a report backwards puts it against a thinner pool, and shifting it forwards pushes it past the end
+  of the data and returns zero.
+
+  The match window is three days, chosen by that measurement rather than taste — widening it to a
+  week added 114 real matches and 394 coincidental ones, so the attributable count actually fell.
+
+  None of this gives a conversion
   *rate*, because reports without an address cannot match at all and a report can be acted on
   without generating its own work order.
 - **A public report leaving the map does not mean it became a work order.** The two feeds

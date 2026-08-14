@@ -127,8 +127,10 @@ function renderReportLinks(matches, reportedDay) {
     <p class="footnote" style="margin-top:8px">
       ${matches.length > 1
         ? `<strong>${matches.length} work orders</strong> were raised on this street in the window, so which (if any) followed from this report is ambiguous. All are shown.`
-        : 'Matched on street and postcode within a week of the report — the same street, not necessarily the same building.'}
+        : 'Matched on street and postcode within three days of the report — the same street, not necessarily the same building.'}
       The two feeds share no reference number, so this is an association rather than a confirmed link.
+      Busy streets get work anyway: shuffling which address belongs to which report still produces
+      about a third of these matches, so treat any single link as suggestive rather than established.
     </p>`;
 }
 
@@ -142,8 +144,10 @@ function renderFaultLinks(matches, raisedDay) {
     <h2 style="font-size:14px;margin:18px 0 10px">Reported by the public</h2>
     <ul class="linklist">${items}</ul>
     <p class="footnote" style="margin-top:8px">
-      Matched on street and postcode — the same street, not necessarily the same building.\n      The feeds share no reference number, so this is an
-      association rather than a confirmed link.</p>`;
+      Matched on street and postcode — the same street, not necessarily the same building.
+      The feeds share no reference number, so this is an association rather than a confirmed link,
+      and about a third of matches like this one would arise by chance on a street that had work
+      anyway.</p>`;
 }
 
 const NO_ADDRESS_NOTE =

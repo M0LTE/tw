@@ -772,7 +772,20 @@ def areas(conn: sqlite3.Connection, today: dt.date) -> dict:
 # Exact street + postcode within this window is high precision; widening past
 # seven days adds nothing (measured: 241 matched reports at both 7 and 14 days).
 MATCH_BEFORE_DAYS = 1   # slack for clock skew between the two feeds
-MATCH_AFTER_DAYS = 7
+# Chosen by measurement, not taste. Permuting addresses between reports while
+# holding dates fixed gives the rate at which this matcher fires on a street
+# that simply had work anyway. Widening the window buys real matches and chance
+# matches together, and past three days the chance ones dominate:
+#
+#   window     real   chance   signal   excess (real - chance)
+#   -1..+1d    1477      353     4.2x     1124
+#   -1..+2d    1697      496     3.4x     1201
+#   -1..+3d    1850      631     2.9x     1219   <- most attributable links
+#   -1..+7d    1964     1025     1.9x      939   <- was here; net loss
+#
+# Going from 3 to 7 days added 114 real matches and 394 chance ones. Three days
+# maximises the links actually attributable to a report having been made.
+MATCH_AFTER_DAYS = 3
 
 
 # Thames Water's `Street` is a full address line, not a street: about 70% of
@@ -818,15 +831,33 @@ def cross_links(conn: sqlite3.Connection) -> tuple[dict, dict]:
     order in the window the ambiguity is real, and choosing silently would
     present a guess as a fact.
     """
-    candidates: dict[tuple[str, str], list[dict]] = collections.defaultdict(list)
-    for table, is_open in (("faults", 1), ("closed_faults", 0)):
+    # One entry per work order, not one per table it appears in. A work order we
+    # watched leave the open feed sits in *both* `faults` and `closed_faults` —
+    # 5,927 of them do — and iterating the tables naively listed each one twice.
+    # That told 787 reports "more than one work order fits, so which followed
+    # from this report is ambiguous" when it was the same work order shown
+    # twice: a fabricated ambiguity, in the one place the site is careful not to
+    # present a guess as a fact.
+    #
+    # `faults` wins where both exist, because it is what the open feed said, and
+    # its `is_open` is the real answer to whether the work order is still live.
+    # The old code hardcoded open=1 for everything in `faults`, so a departed
+    # fault rendered as a clickable link into a list that only holds open ones —
+    # a link that silently did nothing.
+    seen: dict[str, dict] = {}
+    for table in ("closed_faults", "faults"):
+        live = "is_open" if table == "faults" else "0 AS is_open"
         for row in conn.execute(
-            f"SELECT id, work_order_number, street, postcode, raised_at, journey_type, status "
-            f"FROM {table} WHERE raised_at IS NOT NULL"
+            f"SELECT id, work_order_number, street, postcode, raised_at, journey_type,"
+            f"       status, {live} FROM {table} WHERE raised_at IS NOT NULL"
         ):
-            key = _match_key(row["street"], row["postcode"])
-            if key:
-                candidates[key].append({**dict(row), "open": is_open})
+            seen[row["id"]] = {**dict(row), "open": row["is_open"]}
+
+    candidates: dict[tuple[str, str], list[dict]] = collections.defaultdict(list)
+    for work_order in seen.values():
+        key = _match_key(work_order["street"], work_order["postcode"])
+        if key:
+            candidates[key].append(work_order)
 
     by_report: dict[str, list[dict]] = {}
     by_fault: dict[str, list[dict]] = collections.defaultdict(list)

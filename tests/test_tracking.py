@@ -1033,6 +1033,40 @@ class CrossLinkTests(unittest.TestCase):
         # a raised time, so assert on the ordering that is actually determinate.
         self.assertEqual(by_report["rep-1"][-1]["id"], "TWIN")
 
+    def test_a_work_order_in_both_tables_is_listed_once(self):
+        """#1 — a work order we watched close sits in `faults` *and*
+        `closed_faults`. Listing the tables naively showed it twice, which the
+        UI then reported as "more than one work order fits, so which followed
+        from this report is ambiguous" — a fabricated ambiguity in the one place
+        the site takes care not to present a guess as a fact.
+        """
+        conn = sqlite3.connect(self.db)
+        conn.execute(
+            "INSERT INTO closed_faults (id, source, street, postcode, raised_at, status,"
+            " first_seen_at, last_changed_at, is_listed) SELECT id, source, street, postcode,"
+            " raised_at, 'Completed', first_seen_at, last_changed_at, 1 FROM faults WHERE id='HIT'"
+        )
+        conn.commit()
+        conn.close()
+
+        by_report, _ = self.links()
+        hits = [m for m in by_report["rep-1"] if m["id"] == "HIT"]
+        self.assertEqual(len(hits), 1, "the same work order must not appear twice")
+
+    def test_a_departed_work_order_is_not_flagged_open(self):
+        # The link payload's `open` decides whether the UI renders a clickable
+        # link into the open-fault list. Marking a departed fault open produced
+        # a link that silently did nothing.
+        conn = sqlite3.connect(self.db)
+        conn.execute("UPDATE faults SET is_open = 0, resolved_at = '2026-01-05T00:00:00+00:00'"
+                     " WHERE id = 'HIT'")
+        conn.commit()
+        conn.close()
+
+        by_report, _ = self.links()
+        hit = next(m for m in by_report["rep-1"] if m["id"] == "HIT")
+        self.assertEqual(hit["open"], 0, "a departed fault is not open")
+
     def test_a_report_with_no_address_matches_nothing(self):
         conn = sqlite3.connect(self.db)
         conn.execute("UPDATE reports SET street = NULL WHERE id = 'rep-1'")

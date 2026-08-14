@@ -332,12 +332,16 @@
 
       <h3>Reports, and how they link to faults</h3>
       <ul>
-        <li>Where a report and a work order share a street and postcode within a week of each other,
-          each links to the other. That is an <strong>association</strong> inferred from place and
+        <li>Where a report and a work order share a street and postcode within three days of each
+          other, each links to the other. That is an <strong>association</strong> inferred from place and
           timing — the two feeds share no reference number. It matches at street level, not house
           number: Thames Water's address field is a single free-text line and a leak reported outside
           one house is routinely worked on under the address of its neighbour. Where more than one
-          work order fits, all are shown rather than one being picked.</li>
+          work order fits, all are shown rather than one being picked. Shuffling which address belongs to
+          which report still reproduces about a third of these matches, because a busy street gets
+          work regardless — so a single link is suggestive, not established. Three days is the window
+          that maximises the links actually attributable to a report having been made; widening it to
+          a week added 114 real matches and 394 coincidental ones.</li>
         <li>A report leaving the map does not prove it became a work order, and a report can convert
           while its pin stays on the map — which is why the same address sometimes shows twice on
           Thames Water's map.</li>

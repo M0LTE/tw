@@ -16,6 +16,79 @@
   "entries": [
     {
       "date": "2026-08-14",
+      "title": "“Repair Complete” does not mean the repair is complete",
+      "summary": "A third closed-feed status that reads like an outcome and is not one. Four in five records carrying it still show outstanding work on Thames Water's own count — and that count usually goes up, not down, at the moment it is applied.",
+      "body": [
+        {
+          "p": "If you look up your street on Thames Water's map and see **Repair Complete**, the natural reading is that the job is done. On the evidence in their own feed, it usually is not."
+        },
+        {
+          "p": "Every work order carries a count of *line items* — the individual tasks making up the job — split into open and closed. Comparing that count against the status is revealing, because two of Thames Water's statuses are clean and one is not:"
+        },
+        {
+          "table": {
+            "head": [
+              "Closed-feed status",
+              "Records",
+              "Still showing open line items"
+            ],
+            "rows": [
+              [
+                "Completed",
+                "7,296",
+                "207 (2.8%)"
+              ],
+              [
+                "Canceled",
+                "826",
+                "0 (0.0%)"
+              ],
+              [
+                "Repair Complete",
+                "936",
+                "747 (79.8%)"
+              ]
+            ]
+          }
+        },
+        {
+          "p": "**A twenty-eight-fold difference between two statuses that sound like the same thing.** The same split shows among faults still on the map: of 447 currently marked *Repair Complete*, 378 have outstanding line items, which puts them alongside *Repair Underway* (91.6%) rather than *Completed* (0%)."
+        },
+        {
+          "p": "The timing is harder to explain away than the totals. We have watched work orders move into *Repair Complete* 947 times. In **688** of them, the number of open line items **went up** in the same moment — the record gained outstanding work at the instant it was declared finished. It fell in only 203."
+        },
+        {
+          "p": "One example from the change log, with times as collected:"
+        },
+        {
+          "list": [
+            "`12:29` — status moves *Repair Planning* → *Repair Underway*",
+            "`13:45` — open line items go **1 → 4**, and status moves *Repair Underway* → *Repair Complete*",
+            "`15:31` — a further line item closes; the completion timestamp is revised two hours later than first published"
+          ]
+        },
+        {
+          "p": "Planning to complete in seventy-six minutes, with the job's total line items going from four to eight. That work order's type is *Visible Leak **Investigation***, which points at the likeliest explanation: the **investigation** finished and the **repair** was raised at the same instant, and the single work-order status reports the first of those. A resident of that street separately reported an open excavation, barriers and Thames Water signage on site, and had that same day received notice from Thames Water that the repair was still to be done."
+        },
+        {
+          "p": "*Repair Complete* also behaves like a waiting room rather than an ending. Records carry a `remain_on_map_hrs` of 72, and the oldest one currently sitting at that status reached it 3.1 days ago — median 1.1 days. It is the state a pin occupies while it ages off the map. Of 922 work orders we have seen enter it, only **193** later acquired a *Completed* verdict; **679** are still listed as *Repair Complete*."
+        },
+        {
+          "p": "**What has changed here.** This site no longer counts *Repair Complete* as an outcome. It moves from “faults we can account for” to “no outcome published”, which moves 382 records and changes the cancelled share of explained departures from 12.7% to 13.8%. On the Faults tab, any fault whose status sounds finished while its own line-item count says otherwise is now marked."
+        },
+        {
+          "p": "**What this does not prove.** Thames Water does not document what a line item is, so an open one is not direct evidence that a hole is unfilled. The claim rests on the contrast — 79.8% against 2.8% — and on the direction the counter moves, both of which anyone can reproduce from the change log. The eyewitness account is what prompted the check; it is not what the finding stands on. It is also possible this is an artefact of how a repair job is split from an investigation job internally, in which case the status is not dishonest so much as useless to a member of the public reading it."
+        }
+      ],
+      "refs": [
+        {
+          "label": "Issue #32 — the working, the queries, and the caveats",
+          "url": "https://github.com/M0LTE/tw/issues/32"
+        }
+      ]
+    },
+    {
+      "date": "2026-08-14",
       "title": "Thames Water mostly meets the deadlines it sets itself — on the small jobs",
       "summary": "Their own road-opening permits are now published here. Four out of five completed works finished by the date they applied for; the exceptions are concentrated in the big schemes.",
       "body": [

@@ -7,6 +7,13 @@
 import { areaChart, barChart, flowChart, formatNumber } from './charts.js';
 
 const AGE_CLASSES = [7, 30, 90, 365];
+// Statuses that sound finished. Thames Water applies "Repair Complete" to
+// records that mostly still carry outstanding line items, and the pin then ages
+// off the map over 72 hours — so somebody looking up their own street sees
+// "Repair Complete" over an open hole. Where the record contradicts itself, say
+// so next to the status rather than passing it on unqualified. See #32.
+const INCONCLUSIVE_VERDICT = 'Repair Complete';
+const FINISHED_SOUNDING = new Set(['Repair Complete', 'Completed']);
 // Rows per page. The page itself scrolls — no inner scroll container — so this
 // is the only thing deciding how much you can scroll through at once. Measured
 // build+layout cost: 100 rows 31ms, 250 86ms, 500 185ms, 1000 406ms. 250 keeps
@@ -198,6 +205,7 @@ function expand(open) {
       age: raised === null ? null : open.today - raised,
       lon: cols.lon[i],
       lat: cols.lat[i],
+      openItems: cols.ol ? cols.ol[i] : null,
     };
     // Case number included because that is the reference Thames Water's own
     // map shows, so it is what someone will paste in here.
@@ -251,6 +259,7 @@ function expandCleared(data) {
       age: raised === null || cleared === null ? null : cleared - raised,
       lon: cols.lon[i],
       lat: cols.lat[i],
+      openItems: cols.ol ? cols.ol[i] : null,
     };
     row.haystack = [row.street, row.postcode, row.city, row.workOrder, row.caseNumber, row.journey]
       .filter(Boolean).join(' ').toLowerCase();
@@ -535,14 +544,35 @@ function clearedCell(x) {
 function verdictCell(x) {
   if (x.verdict === 'Completed') return '<span class="verdict done">Completed</span>';
   if (x.verdict === 'Canceled') return '<span class="verdict cancelled">Cancelled</span>';
+  // "Repair Complete" reads like an outcome and is not one — four in five
+  // records carrying it still have outstanding line items. Rendering it as a
+  // neutral verdict would repeat the source's own overstatement. See #32.
+  if (x.verdict === INCONCLUSIVE_VERDICT) {
+    return '<span class="verdict unknown" title="Thames Water lists this as &quot;Repair Complete&quot;, '
+      + 'a status that usually still carries outstanding line items. It does not confirm a repair.">'
+      + 'Not confirmed</span>';
+  }
   if (x.verdict) return `<span class="verdict">${escape(x.verdict)}</span>`;
   return '<span class="verdict unknown" title="This fault stopped being published, but Thames Water\'s closed feed carries no record of it">Not confirmed</span>';
+}
+
+// A status plus, where it disagrees with the record, the disagreement. The
+// marker is deliberately not styled as an error: outstanding line items are
+// Thames Water's own count, and what they mean is undocumented. It is shown so
+// a reader can see the contradiction, not told what to conclude from it.
+function statusCell(x) {
+  const label = escape(x.status || '');
+  if (!FINISHED_SOUNDING.has(x.status) || !x.openItems) return label;
+  const n = x.openItems;
+  return `${label} <span class="pinned" title="Thames Water's own record still shows `
+    + `${n} open line item${n === 1 ? '' : 's'} on this work order, despite the status.">`
+    + `&#9888; ${n} open</span>`;
 }
 
 const BASE_COLUMNS = [
   { key: 'journey', label: 'Problem', render: (x) => escape(x.journey || '') },
   { key: 'street', label: 'Where', cls: 'wrap', render: (x) => locationCell(x, x.city) },
-  { key: 'status', label: 'Status', render: (x) => escape(x.status || '') },
+  { key: 'status', label: 'Status', render: (x) => statusCell(x) },
   { key: 'source', label: 'Network', render: (x) => `<span class="pill ${x.source}">${x.source === 'clean' ? 'Clean' : 'Waste'}</span>` },
   { key: 'workOrder', label: 'Work order', cls: 'mono', render: (x) => escape(x.workOrder || '') },
   { key: 'caseNumber', label: 'Case', cls: 'mono', render: (x) => escape(x.caseNumber || '') },
@@ -1017,6 +1047,15 @@ function renderClosure() {
   const cancelled = c.matched_by_status.Canceled || 0;
   const pct = c.matched ? ((cancelled / c.matched) * 100).toFixed(1) : null;
 
+  // "Repair Complete" is excluded from the verdicts upstream, so say why here
+  // rather than leaving a hole in the arithmetic.
+  const inconclusive = c.inconclusive
+    ? ` A further ${formatNumber(c.inconclusive)} are listed only as
+        &ldquo;${escape(c.inconclusive_status)}&rdquo;, which is not an outcome: four in five
+        records carrying it still have outstanding line items on them, and the count more often
+        rises than falls at the moment it is applied. Those are counted here as unexplained.`
+    : '';
+
   $('#closure-body').innerHTML = `
     <div class="stat-row">
       <div><span class="stat-value">${formatNumber(c.departed)}</span><span class="stat-label">left the map since tracking began</span></div>
@@ -1026,10 +1065,11 @@ function renderClosure() {
     </div>
     <p class="footnote" style="margin-top:0">
       ${c.matched
-        ? `Of the ${formatNumber(c.matched)} we can account for, <strong>${pct}%</strong> were cancelled rather than repaired. `
-        : ''}The remaining ${formatNumber(c.unexplained)} never appeared in the closed feed, so we
-      cannot say what happened to them — that feed is also a rolling window, and a fault can pass
-      through it between collections. Thames Water lists
+        ? `Of the ${formatNumber(c.matched)} carrying a verdict that says what happened,
+           <strong>${pct}%</strong> were cancelled rather than repaired. `
+        : ''}${formatNumber(c.unexplained - (c.inconclusive || 0))} never appeared in the closed
+      feed at all, so we cannot say what happened to them — that feed is also a rolling window, and
+      a fault can pass through it between collections.${inconclusive} Thames Water lists
       <strong>${formatNumber(c.listed_total)}</strong> closed work orders right now, of which only
       ${formatNumber(c.with_closure_date)} carry a closure date. Small sample so far: tracking
       began on ${escape(new Date(state.summary.totals.first_snapshot).toLocaleDateString('en-GB'))}.

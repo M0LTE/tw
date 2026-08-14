@@ -37,6 +37,13 @@ LA_HOUSEHOLDS = REFERENCE / "la_households.json"
 NOTES = ROOT / "data" / "notes.json"
 PERMITS_DIR = ROOT / "data" / "permits"
 
+# A closed-feed status that reads like an outcome and is not one. Thames Water
+# marks a record "Repair Complete" while outstanding line items remain on it,
+# and the count more often rises than falls at that moment; the pin then ages
+# off the map over the following 72 hours. Treated as an absence of a verdict
+# rather than as a repair. See #32 for the working.
+INCONCLUSIVE_STATUS = "Repair Complete"
+
 EPOCH = dt.date(2020, 1, 1)
 # How much resolution history the "how fast do they fix things" panels use.
 RESOLVED_WINDOW_DAYS = 365
@@ -102,13 +109,14 @@ def open_faults(conn: sqlite3.Connection, today: dt.date, links: dict | None = N
     """Every currently-open fault, columnar and dictionary-encoded."""
     status, journey, city, source, work_type, priority = (Dictionary() for _ in range(6))
     cols: dict[str, list] = {k: [] for k in
-                             ("id", "wo", "cn", "s", "j", "w", "p", "c", "n", "pc", "st", "r", "f", "lon", "lat")}
+                             ("id", "wo", "cn", "s", "j", "w", "p", "c", "n", "pc", "st", "r", "f", "lon", "lat", "ol")}
 
     # Oldest first, nulls last: the UI slices the head of this for its
     # "longest-running faults" table, so the order is part of the contract.
     rows = conn.execute(
         "SELECT id, work_order_number, case_number, status, journey_type, mid_level_work_type,"
-        "       priority_flag, city, source, postcode, street, raised_at, first_seen_at, lon, lat "
+        "       priority_flag, city, source, postcode, street, raised_at, first_seen_at, lon, lat,"
+        "       open_line_items "
         "FROM faults WHERE is_open = 1 ORDER BY raised_at IS NULL, raised_at"
     )
     for row in rows:
@@ -127,6 +135,10 @@ def open_faults(conn: sqlite3.Connection, today: dt.date, links: dict | None = N
         cols["f"].append(day_index(row["first_seen_at"]))
         cols["lon"].append(None if row["lon"] is None else round(row["lon"], 5))
         cols["lat"].append(None if row["lat"] is None else round(row["lat"], 5))
+        # Outstanding work on the record. Shipped because it is the only field
+        # that contradicts a status of "Repair Complete", which 84.6% of faults
+        # carrying it do — see #32.
+        cols["ol"].append(row["open_line_items"])
 
     # Status history, so a fault's timeline opens instantly with no extra fetch.
     index = {fault_id: i for i, fault_id in enumerate(cols["id"])}
@@ -177,13 +189,14 @@ def cleared_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
     status, journey, city, source, work_type, priority, verdict = (Dictionary() for _ in range(7))
     cols: dict[str, list] = {k: [] for k in
                              ("id", "wo", "cn", "s", "j", "w", "p", "c", "n", "pc", "st",
-                              "r", "t", "v", "lon", "lat")}
+                              "r", "t", "v", "lon", "lat", "ol")}
 
     cutoff = (today - dt.timedelta(days=CLEARED_WINDOW_DAYS)).isoformat()
     rows = conn.execute(
         "SELECT f.id, f.work_order_number, f.case_number, f.status, f.journey_type,"
         "       f.mid_level_work_type, f.priority_flag, f.city, f.source, f.postcode,"
-        "       f.street, f.raised_at, f.resolved_at, f.lon, f.lat, cf.status AS verdict "
+        "       f.street, f.raised_at, f.resolved_at, f.lon, f.lat, f.open_line_items,"
+        "       cf.status AS verdict "
         "FROM faults f LEFT JOIN closed_faults cf ON cf.id = f.id "
         "WHERE f.is_open = 0 AND f.resolved_at >= ? "
         "ORDER BY f.resolved_at DESC",
@@ -204,6 +217,7 @@ def cleared_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
         cols["r"].append(day_index(row["raised_at"]))
         cols["t"].append(epoch_seconds(row["resolved_at"]))
         cols["v"].append(verdict(row["verdict"]))
+        cols["ol"].append(row["open_line_items"])
         cols["lon"].append(None if row["lon"] is None else round(row["lon"], 5))
         cols["lat"].append(None if row["lat"] is None else round(row["lat"], 5))
 
@@ -939,6 +953,14 @@ def closure_outcomes(conn: sqlite3.Connection) -> dict:
         "WHERE f.is_open = 0 GROUP BY cf.status"
     ).fetchall())
     resolved_matched = sum(matched.values())
+    # "Repair Complete" is not a verdict, whatever it sounds like. Thames Water
+    # applies it to records that overwhelmingly still carry outstanding line
+    # items — 79.8% of the closed feed's, against 2.8% of its "Completed" ones —
+    # and 72.6% of transitions into it come with that count going *up*. Counting
+    # it as accounted-for made "of the faults we can explain, x% were cancelled"
+    # quietly imply the rest were repaired. It belongs with the unexplained. #32
+    inconclusive = matched.pop(INCONCLUSIVE_STATUS, 0)
+    conclusive = resolved_matched - inconclusive
 
     return {
         "listed": listed,
@@ -946,11 +968,14 @@ def closure_outcomes(conn: sqlite3.Connection) -> dict:
         "with_closure_date": conn.execute(
             "SELECT count(*) FROM closed_faults WHERE closure_at IS NOT NULL"
         ).fetchone()[0],
-        # Of the faults we watched leave the open feed, how many can we account for.
+        # Of the faults we watched leave the open feed, how many carry a verdict
+        # that actually says what happened.
         "departed": gone,
-        "matched": resolved_matched,
+        "matched": conclusive,
         "matched_by_status": matched,
-        "unexplained": gone - resolved_matched,
+        "inconclusive": inconclusive,
+        "inconclusive_status": INCONCLUSIVE_STATUS,
+        "unexplained": gone - conclusive,
     }
 
 

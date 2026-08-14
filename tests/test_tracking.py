@@ -842,6 +842,52 @@ class ClosureOutcomeTests(unittest.TestCase):
         self.assertEqual(result["unexplained"], 0)
         self.assertEqual(result["listed_total"], 3)
 
+    def test_repair_complete_is_not_counted_as_an_outcome(self):
+        """#32 — the status that sounds like a verdict and is not one.
+
+        Thames Water applies "Repair Complete" to records that overwhelmingly
+        still carry open line items — 79.8% of the closed feed's, against 2.8%
+        of those marked "Completed" — and 688 of 947 observed transitions into
+        it saw that count rise rather than fall. Counting it as accounted-for
+        made "of the faults we can explain, x% were cancelled" imply the rest
+        were repaired, which is exactly the overstatement this site exists to
+        catch.
+        """
+        from collector import build_site
+
+        conn = sqlite3.connect(self.db)
+        conn.execute("UPDATE closed_faults SET status='Repair Complete' WHERE id='A'")
+        conn.commit()
+        conn.row_factory = sqlite3.Row
+        result = build_site.closure_outcomes(conn)
+        conn.close()
+
+        self.assertEqual(result["departed"], 2)
+        self.assertEqual(result["matched"], 1, "only the cancellation says what happened")
+        self.assertEqual(result["matched_by_status"], {"Canceled": 1})
+        self.assertNotIn("Repair Complete", result["matched_by_status"])
+        self.assertEqual(result["inconclusive"], 1)
+        self.assertEqual(result["inconclusive_status"], "Repair Complete")
+        # It is still a departure we cannot account for, so it must not vanish
+        # from the arithmetic — departed = matched + unexplained throughout.
+        self.assertEqual(result["unexplained"], 1)
+        self.assertEqual(result["matched"] + result["unexplained"], result["departed"])
+
+    def test_open_payload_ships_the_line_item_count(self):
+        """The only field that contradicts a finished-sounding status (#32)."""
+        from collector import build_site
+
+        conn = sqlite3.connect(self.db)
+        conn.execute("UPDATE faults SET status='Repair Complete', open_line_items=4 WHERE id='C'")
+        conn.commit()
+        conn.row_factory = sqlite3.Row
+        payload = build_site.open_faults(conn, dt.date(2026, 1, 2))
+        conn.close()
+
+        i = payload["cols"]["id"].index("C")
+        self.assertEqual(payload["cols"]["ol"][i], 4,
+                         "the browser cannot flag the contradiction without this")
+
     def test_unmatched_departures_are_counted_not_assumed_fixed(self):
         conn = sqlite3.connect(self.db)
         conn.execute("DELETE FROM closed_faults WHERE id = 'B'")

@@ -110,9 +110,10 @@
     <section class="card" id="card-closure">
       <header>
         <h2>Fixed, or just gone?</h2>
-        <p>Thames Water separately publishes work orders it has finished with, marked
-           <em>Completed</em> or <em>Canceled</em>. Matching those against faults we watched leave
-           the map is the only way to tell a repair from a cancellation.</p>
+        <p>Thames Water separately publishes work orders it has finished with. Matching those
+           against faults we watched leave the map is the only way to tell a repair from a
+           cancellation &mdash; but only two of the three statuses they use actually say what
+           happened.</p>
       </header>
       <div id="closure-body"></div>
     </section>
@@ -281,7 +282,8 @@
           <code>WasteWaterOpenWorkOrder</code>. Work Thames Water has scheduled and not yet finished.</li>
         <li><strong>Closed work orders</strong> — <code>CleanWaterClosedWorkOrder</code> and
           <code>WasteWaterClosedWorkOrder</code>. Work they have finished with, marked
-          <em>Completed</em> or <em>Canceled</em>.</li>
+          <em>Completed</em>, <em>Canceled</em> or <em>Repair Complete</em> &mdash; the third of
+          which does not mean what it sounds like, as below.</li>
         <li><strong>Public reports</strong> — the pending-pins layer behind the &ldquo;Leak&rdquo;
           markers. What appears the moment somebody reports a problem, before any work order exists.</li>
       </ul>
@@ -311,9 +313,17 @@
         <li><strong>Age</strong> is measured from <code>WorkOrderRaisedDate</code>, Thames Water's own
           timestamp for when the work order was created.</li>
         <li><strong>Cleared</strong> means a fault stopped appearing in the open feed. Where that fault
-          also turns up in the closed feed, Thames Water's own verdict is shown —
+          also turns up in the closed feed, Thames Water's own verdict is shown &mdash;
           <em>Completed</em> or <em>Canceled</em>. Where it does not, we genuinely do not know what
           happened, and the site says so rather than assuming a repair.</li>
+        <li><strong>&ldquo;Repair Complete&rdquo; is not counted as a repair.</strong> It is a third
+          closed-feed status, and it is not an outcome: <strong>79.8%</strong> of the records
+          carrying it still have outstanding line items on them, against <strong>2.8%</strong> of
+          those marked <em>Completed</em>. Of 947 times we have watched a work order move into it,
+          <strong>688</strong> saw its count of open line items go <em>up</em> at that moment, not
+          down. Records sit there for about 72 hours and then age off the map. It is treated here as
+          an absence of a verdict, and where a fault's status contradicts its own line-item count the
+          Faults tab marks it.</li>
         <li><strong>Time to fix</strong> counts from the raised date to the day the fault left the map.
           Faults already open when tracking began are included, so the figure is if anything generous.
           A minority of closed records carry a real closure date; most do not.</li>

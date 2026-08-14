@@ -1254,6 +1254,74 @@ function renderStages(d) {
     ${back}`;
 }
 
+// ── Permits ─────────────────────────────────────────────────────
+//
+// A second source on a different clock — DfT's Street Manager archive, monthly
+// in arrears, where the fault map is polled hourly. The card hides itself when
+// no extract is committed rather than rendering zeroes.
+//
+// The two breakdowns are load-bearing, not decoration. Works that finish inside
+// a single month's archive are disproportionately short works, and the late
+// rate climbs steeply with both duration and category — so the headline is a
+// floor, and these tables are why we are entitled to say so.
+function renderPermits(d) {
+  const host = $('#permits-body');
+  if (!host) return;
+  if (!d || !d.finished) return;
+  $('#card-permits').hidden = false;
+
+  const pct = (n) => `${(100 * n / d.finished).toFixed(1)}%`;
+  // Duration bands have a natural order and must keep it — the point of the
+  // table is that the rate climbs monotonically down the rows. Categories have
+  // no inherent order, so they sort by the rate itself.
+  const DURATIONS = ['under a day', '1-2 days', '2-5 days', '5-10 days', '10-30 days', 'over 30 days'];
+  const band = (rows, label, order) => {
+    const keys = Object.keys(rows).sort((a, b) => (order
+      ? order.indexOf(a) - order.indexOf(b)
+      : rows[b].pct - rows[a].pct));
+    return `
+      <div class="table-wrap"><table>
+        <thead><tr><th>${label}</th><th>Works</th><th>Late</th><th>Share late</th></tr></thead>
+        <tbody>${keys.map((k) => `
+          <tr><td>${escape(k)}</td>
+              <td class="num">${formatNumber(rows[k].n)}</td>
+              <td class="num">${formatNumber(rows[k].late)}</td>
+              <td class="num">${rows[k].pct.toFixed(1)}%</td></tr>`).join('')}
+        </tbody>
+      </table></div>`;
+  };
+
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Against the end date they applied for</th><th>Works</th><th>Share</th></tr></thead>
+      <tbody>
+        <tr><td>Finished early</td><td class="num">${formatNumber(d.early)}</td>
+            <td class="num">${pct(d.early)}</td></tr>
+        <tr><td>Finished on the last permitted day</td><td class="num">${formatNumber(d.on_last_day)}</td>
+            <td class="num">${pct(d.on_last_day)}</td></tr>
+        <tr><td>Finished late</td><td class="num">${formatNumber(d.late)}</td>
+            <td class="num">${d.late_pct.toFixed(1)}%</td></tr>
+        <tr><td class="pinned" style="padding-left:18px">&hellip;of which, by exactly one day</td>
+            <td class="num pinned">${formatNumber(d.late_by_one_day)}</td>
+            <td class="num pinned">${pct(d.late_by_one_day)}</td></tr>
+        <tr><td class="pinned" style="padding-left:18px">&hellip;more than a day late</td>
+            <td class="num pinned">${formatNumber(d.over_a_day_late)}</td>
+            <td class="num pinned">${pct(d.over_a_day_late)}</td></tr>
+      </tbody>
+    </table></div>
+    <p class="footnote">${formatNumber(d.permits)} permits published for
+      ${d.months.map(escape).join(', ')}; ${formatNumber(d.finished)} of them record both a
+      proposed and an actual end date. The rest are planned, cancelled, or still running.
+      Where an extension was applied for and granted, the comparison uses the revised date &mdash;
+      an approved extension is not an overrun. Worst overrun observed: ${d.max_days_late} days.</p>
+    ${band(d.by_duration, 'How long the work actually took', DURATIONS)}
+    ${band(d.by_category, 'Work category')}
+    <p class="footnote"><strong>Read the headline as a floor.</strong> Only works that
+      finished within a published month can be measured, and those skew short; the late rate
+      rises with both duration and category, so the works missing from this table are the ones
+      most likely to have overrun.</p>`;
+}
+
 // ── Notes ───────────────────────────────────────────────────────
 //
 // Dated narrative entries from data/notes.json. This replaced a banner across
@@ -1327,13 +1395,14 @@ function renderNotes(data) {
 async function main() {
   wireUp();
   try {
-    const [summary, open, reports, cleared, noteData] = await Promise.all([
+    const [summary, open, reports, cleared, noteData, permitData] = await Promise.all([
       loadJSON('data/summary.json'),
       loadJSON('data/open.json'),
       loadJSON('data/reports.json').catch(() => null),
       // Tolerated missing so the site still loads against an older data build.
       loadJSON('data/cleared.json').catch(() => null),
       loadJSON('data/notes.json').catch(() => null),
+      loadJSON('data/permits.json').catch(() => null),
     ]);
 
     state.summary = summary;
@@ -1370,6 +1439,7 @@ async function main() {
     renderFlooding();
     renderClosure();
     renderStages(state.summary.stages);
+    renderPermits(permitData);
     renderPlaces();
     renderReportsBlurb();
     applyFilters();

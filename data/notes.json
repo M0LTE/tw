@@ -16,6 +16,135 @@
   "entries": [
     {
       "date": "2026-08-14",
+      "title": "Thames Water mostly meets the deadlines it sets itself — on the small jobs",
+      "summary": "Their own road-opening permits are now published here. Four out of five completed works finished by the date they applied for; the exceptions are concentrated in the big schemes.",
+      "body": [
+        {
+          "p": "Before Thames Water can dig up a road, it has to apply to the highway authority for a permit saying when the work will start and finish. The Department for Transport publishes those applications, and the dates the work actually started and stopped. That makes a question askable that the fault map alone cannot answer: **when they finally did the work, did it finish when they said it would?**"
+        },
+        {
+          "p": "This is a deadline Thames Water set for itself, in an application it wrote, to a regulator that can issue fixed penalty notices. It is a fairer test than most — and on the whole they pass it."
+        },
+        {
+          "table": {
+            "head": [
+              "Against the end date they applied for",
+              "Works",
+              "Share"
+            ],
+            "rows": [
+              [
+                "Finished early",
+                "2,416",
+                "31.0%"
+              ],
+              [
+                "Finished on the last permitted day",
+                "3,743",
+                "48.0%"
+              ],
+              [
+                "Finished late",
+                "1,637",
+                "21.0%"
+              ],
+              [
+                "…of which, by exactly one day",
+                "1,554",
+                "19.9%"
+              ],
+              [
+                "…more than a day late",
+                "83",
+                "1.1%"
+              ]
+            ]
+          }
+        },
+        {
+          "p": "From 16,653 permits published for July 2026, of which 7,796 record both a proposed and an actual end. **Roughly one in five completed works finished late, but almost all of those by a single day.** Only 83 ran more than a day over. The worst was 43 days."
+        },
+        {
+          "p": "That single-day figure deserves a caveat rather than a headline. A job finishing at nine the morning after its permit expired is counted late here, and in a working sense it very nearly was not. What the number does rule out is a picture of routine, sustained overrunning on ordinary repairs."
+        },
+        {
+          "p": "The pattern underneath is more interesting than the total, because the late rate is not spread evenly:"
+        },
+        {
+          "table": {
+            "head": [
+              "Work category",
+              "Works",
+              "Share late"
+            ],
+            "rows": [
+              [
+                "Major",
+                "358",
+                "44.4%"
+              ],
+              [
+                "Standard",
+                "357",
+                "37.0%"
+              ],
+              [
+                "Minor",
+                "2,715",
+                "28.3%"
+              ],
+              [
+                "Immediate — emergency",
+                "506",
+                "17.6%"
+              ],
+              [
+                "Immediate — urgent",
+                "3,860",
+                "12.7%"
+              ]
+            ]
+          }
+        },
+        {
+          "p": "Urgent and emergency work — the burst main, the flooded street — is the most likely to finish on time. Major planned schemes are three and a half times more likely to run over. The same gradient shows against how long the work actually took: 17% of jobs under a day ran late, against 43% of jobs lasting more than a month."
+        },
+        {
+          "p": "**That gradient is why the 21% should be read as a floor.** Only works that finished inside a published month can be measured at all, so long jobs are under-counted — and long jobs are exactly the ones that overrun. The true rate across all work is higher than this, by an amount we cannot measure from one month."
+        },
+        {
+          "p": "Two things this does *not* show, stated plainly because both are easy to assume:"
+        },
+        {
+          "list": [
+            "**It says nothing about any particular fault on the map.** We built the obvious join — permit within so many metres of a fault, within so many days — and tested it by shuffling which fault sits at which location. At its best it fired about five times more often than chance while reaching only 1% of faults, so about one in five surviving matches was still coincidence. Thames Water digs where its pipes are and its faults are where its pipes are, so being near a permit means much less than it looks. The join is built and is not published.",
+            "**It says nothing about the wait before the work.** A permit records what happened once the digging was scheduled. A fault sitting at *Repair Planning* for eight months and then repaired in the two days its permit allowed counts here as on time, because it was. The delay this site mostly documents happens before a permit is ever applied for."
+          ]
+        },
+        {
+          "p": "One aside worth recording: 2,959 of Thames Water's 16,653 permits — about 18% — carry no map coordinates at all, and those are disproportionately the Major and Standard schemes — the ones that overrun most. Any analysis that starts by requiring a location is therefore blind to the worst-behaved works. That is a trap rather than a conspiracy, but it is worth knowing about."
+        },
+        {
+          "p": "The June 2026 archive is excluded: the file on DfT's server is truncated where it was uploaded, ending part-way through a filename, and a partial month would carry a hole of unknown size."
+        }
+      ],
+      "refs": [
+        {
+          "label": "Issue #6 — the permit join, the null model, and why it is not published",
+          "url": "https://github.com/M0LTE/tw/issues/6"
+        },
+        {
+          "label": "Issue #31 — the truncated June archive",
+          "url": "https://github.com/M0LTE/tw/issues/31"
+        },
+        {
+          "label": "DfT Street Manager open data",
+          "url": "https://department-for-transport-streetmanager.github.io/street-manager-docs/open-data/"
+        }
+      ]
+    },
+    {
+      "date": "2026-08-14",
       "title": "A third of the links between reports and repairs are coincidence",
       "summary": "We tested the site's own matching by shuffling the addresses. It fires far more often on chance than we had claimed.",
       "body": [
@@ -33,11 +162,31 @@
         },
         {
           "table": {
-            "head": ["Window allowed", "Links found", "Found by chance", "Attributable to the report"],
+            "head": [
+              "Window allowed",
+              "Links found",
+              "Found by chance",
+              "Attributable to the report"
+            ],
             "rows": [
-              ["Within 1 day", "1,477", "353", "1,124"],
-              ["Within 3 days", "1,850", "631", "1,219"],
-              ["Within a week", "1,964", "1,025", "939"]
+              [
+                "Within 1 day",
+                "1,477",
+                "353",
+                "1,124"
+              ],
+              [
+                "Within 3 days",
+                "1,850",
+                "631",
+                "1,219"
+              ],
+              [
+                "Within a week",
+                "1,964",
+                "1,025",
+                "939"
+              ]
             ]
           }
         },
@@ -58,7 +207,10 @@
         }
       ],
       "refs": [
-        { "label": "Issue #1 — the working, and what a conversion rate still needs", "url": "https://github.com/M0LTE/tw/issues/1" }
+        {
+          "label": "Issue #1 — the working, and what a conversion rate still needs",
+          "url": "https://github.com/M0LTE/tw/issues/1"
+        }
       ]
     },
     {
@@ -74,10 +226,22 @@
         },
         {
           "table": {
-            "head": ["Map retention set to", "Records measured", "Actually left the map after"],
+            "head": [
+              "Map retention set to",
+              "Records measured",
+              "Actually left the map after"
+            ],
             "rows": [
-              ["24 hours", "1,693", "26.0 hours (90% between 25.6 and 26.5)"],
-              ["72 hours", "314", "73.9 hours (90% between 73.4 and 74.4)"]
+              [
+                "24 hours",
+                "1,693",
+                "26.0 hours (90% between 25.6 and 26.5)"
+              ],
+              [
+                "72 hours",
+                "314",
+                "73.9 hours (90% between 73.4 and 74.4)"
+              ]
             ]
           }
         },
@@ -92,13 +256,37 @@
         },
         {
           "table": {
-            "head": ["Work orders leaving the map on", "Number", "Confirmed by the closed feed"],
+            "head": [
+              "Work orders leaving the map on",
+              "Number",
+              "Confirmed by the closed feed"
+            ],
             "rows": [
-              ["4 August (before the data loss)", "93", "72.0%"],
-              ["5 August (the data loss)", "14,048", "2.7%"],
-              ["7 August", "627", "81.8%"],
-              ["9 August", "491", "94.5%"],
-              ["11 August", "317", "97.2%"]
+              [
+                "4 August (before the data loss)",
+                "93",
+                "72.0%"
+              ],
+              [
+                "5 August (the data loss)",
+                "14,048",
+                "2.7%"
+              ],
+              [
+                "7 August",
+                "627",
+                "81.8%"
+              ],
+              [
+                "9 August",
+                "491",
+                "94.5%"
+              ],
+              [
+                "11 August",
+                "317",
+                "97.2%"
+              ]
             ]
           }
         },
@@ -119,7 +307,10 @@
         }
       ],
       "refs": [
-        { "label": "Issue #29 — the working behind these figures", "url": "https://github.com/M0LTE/tw/issues/29" }
+        {
+          "label": "Issue #29 — the working behind these figures",
+          "url": "https://github.com/M0LTE/tw/issues/29"
+        }
       ]
     },
     {
@@ -135,10 +326,22 @@
         },
         {
           "table": {
-            "head": ["Network", "Open over a year", "Open over two years"],
+            "head": [
+              "Network",
+              "Open over a year",
+              "Open over two years"
+            ],
             "rows": [
-              ["Clean water", "800", "83"],
-              ["Waste water", "21", "8"]
+              [
+                "Clean water",
+                "800",
+                "83"
+              ],
+              [
+                "Waste water",
+                "21",
+                "8"
+              ]
             ]
           }
         },
@@ -166,7 +369,10 @@
         }
       ],
       "refs": [
-        { "label": "Issue #27 — the check-in, and what was deliberately not published", "url": "https://github.com/M0LTE/tw/issues/27" }
+        {
+          "label": "Issue #27 — the check-in, and what was deliberately not published",
+          "url": "https://github.com/M0LTE/tw/issues/27"
+        }
       ]
     },
     {
@@ -182,11 +388,27 @@
         },
         {
           "table": {
-            "head": ["Departures", "Number", "Confirmed by the closed feed"],
+            "head": [
+              "Departures",
+              "Number",
+              "Confirmed by the closed feed"
+            ],
             "rows": [
-              ["Before 5 August, 18:00", "122", "86 (70.5%)"],
-              ["During the event", "14,034", "369 (2.6%)"],
-              ["Since 6 August, 01:00", "1,773", "1,066 (60.1%)"]
+              [
+                "Before 5 August, 18:00",
+                "122",
+                "86 (70.5%)"
+              ],
+              [
+                "During the event",
+                "14,034",
+                "369 (2.6%)"
+              ],
+              [
+                "Since 6 August, 01:00",
+                "1,773",
+                "1,066 (60.1%)"
+              ]
             ]
           }
         },
@@ -204,8 +426,14 @@
         }
       ],
       "refs": [
-        { "label": "Issue #21 — the event in full", "url": "https://github.com/M0LTE/tw/issues/21" },
-        { "label": "Issue #27 — this check-in", "url": "https://github.com/M0LTE/tw/issues/27" }
+        {
+          "label": "Issue #21 — the event in full",
+          "url": "https://github.com/M0LTE/tw/issues/21"
+        },
+        {
+          "label": "Issue #27 — this check-in",
+          "url": "https://github.com/M0LTE/tw/issues/27"
+        }
       ]
     },
     {
@@ -224,11 +452,27 @@
         },
         {
           "table": {
-            "head": ["Departures", "Number", "Corroborated as closed"],
+            "head": [
+              "Departures",
+              "Number",
+              "Corroborated as closed"
+            ],
             "rows": [
-              ["Everything before 5 August", "127", "85 (66.9%)"],
-              ["Clean water, 18:47", "4,149", "4 (0.1%)"],
-              ["Waste water, 23:18", "9,498", "176 (1.9%)"]
+              [
+                "Everything before 5 August",
+                "127",
+                "85 (66.9%)"
+              ],
+              [
+                "Clean water, 18:47",
+                "4,149",
+                "4 (0.1%)"
+              ],
+              [
+                "Waste water, 23:18",
+                "9,498",
+                "176 (1.9%)"
+              ]
             ]
           }
         },
@@ -240,14 +484,49 @@
         },
         {
           "table": {
-            "head": ["Status (waste water)", "Departed", "Survived", "% gone"],
+            "head": [
+              "Status (waste water)",
+              "Departed",
+              "Survived",
+              "% gone"
+            ],
             "rows": [
-              ["Investigation", "8,253", "515", "94.1%"],
-              ["Repair Underway", "837", "219", "79.3%"],
-              ["Repair Planning", "513", "349", "59.5%"],
-              ["Reported", "176", "59", "74.9%"],
-              ["Completed", "14", "342", "3.9%"],
-              ["Canceled", "0", "19", "0.0%"]
+              [
+                "Investigation",
+                "8,253",
+                "515",
+                "94.1%"
+              ],
+              [
+                "Repair Underway",
+                "837",
+                "219",
+                "79.3%"
+              ],
+              [
+                "Repair Planning",
+                "513",
+                "349",
+                "59.5%"
+              ],
+              [
+                "Reported",
+                "176",
+                "59",
+                "74.9%"
+              ],
+              [
+                "Completed",
+                "14",
+                "342",
+                "3.9%"
+              ],
+              [
+                "Canceled",
+                "0",
+                "19",
+                "0.0%"
+              ]
             ]
           }
         },
@@ -262,12 +541,32 @@
         },
         {
           "table": {
-            "head": ["Age of open faults", "Before", "After"],
+            "head": [
+              "Age of open faults",
+              "Before",
+              "After"
+            ],
             "rows": [
-              ["Under 30 days", "27%", "46%"],
-              ["30 to 90 days", "34%", "16%"],
-              ["90 days to a year", "34%", "27%"],
-              ["Over a year", "5%", "11%"]
+              [
+                "Under 30 days",
+                "27%",
+                "46%"
+              ],
+              [
+                "30 to 90 days",
+                "34%",
+                "16%"
+              ],
+              [
+                "90 days to a year",
+                "34%",
+                "27%"
+              ],
+              [
+                "Over a year",
+                "5%",
+                "11%"
+              ]
             ]
           }
         },
@@ -282,8 +581,14 @@
         }
       ],
       "refs": [
-        { "label": "Issue #21 — the event and the collector's response", "url": "https://github.com/M0LTE/tw/issues/21" },
-        { "label": "Issue #24 — why the poll is checked for completeness, not plausibility", "url": "https://github.com/M0LTE/tw/issues/24" }
+        {
+          "label": "Issue #21 — the event and the collector's response",
+          "url": "https://github.com/M0LTE/tw/issues/21"
+        },
+        {
+          "label": "Issue #24 — why the poll is checked for completeness, not plausibility",
+          "url": "https://github.com/M0LTE/tw/issues/24"
+        }
       ]
     }
   ]

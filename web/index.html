@@ -117,6 +117,17 @@
       <div id="closure-body"></div>
     </section>
 
+    <section class="card" id="card-permits" hidden>
+      <header>
+        <h2>Their own permits, their own deadlines</h2>
+        <p>To dig up a road, Thames Water must apply to the highway authority for a permit
+           stating when the work will start and finish. Those applications are published by
+           the Department for Transport. This compares the date they said they would finish
+           against the date they recorded finishing &mdash; a deadline they set themselves.</p>
+      </header>
+      <div id="permits-body"></div>
+    </section>
+
     <section class="card" id="card-flooding">
       <header>
         <h2>External sewer flooding</h2>
@@ -275,6 +286,17 @@
           markers. What appears the moment somebody reports a problem, before any work order exists.</li>
       </ul>
       <p>
+        A sixth source, on a different clock, is the Department for Transport's
+        <a href="https://department-for-transport-streetmanager.github.io/street-manager-docs/open-data/" target="_blank" rel="noopener">Street Manager</a>
+        open data: the statutory register of permits to dig up a road in England. Thames Water must
+        apply to the highway authority before opening a road, stating when the work will start and
+        finish. Those applications, and the dates the work actually started and finished, are
+        published monthly in arrears. That is what &ldquo;Their own permits, their own deadlines&rdquo;
+        on the overview is built from &mdash; a deadline Thames Water set for itself, compared against
+        its own record of meeting it. Permits are matched on the promoter name, and only Thames
+        Water's records are kept.
+      </p>
+      <p>
         <strong>Reports and work orders are counted separately</strong>, because they are different
         things: a report is a member of the public saying something is wrong, a work order is Thames
         Water scheduling work. Thames Water keeps only about a week of reports, so one that never
@@ -328,6 +350,34 @@
           <strong>Notes</strong>, with the evidence behind it. That is the one part of this site that
           is written rather than counted: the change log can show that thousands of work orders
           stopped being published, but not what it meant.</li>
+      </ul>
+
+      <h3>Permits</h3>
+      <ul>
+        <li>A permit is counted <strong>late</strong> when the work's recorded end falls on a later
+          calendar day than the end date applied for. Whole days, London time: the commitment is to a
+          day, not an instant, so work finishing at nine the next morning is a day late rather than
+          &ldquo;0.4 days over&rdquo;.</li>
+        <li>Where a permit was <strong>extended and the extension granted</strong>, the comparison
+          uses the revised date. An extension that was applied for and approved is not an overrun.</li>
+        <li><strong>The late rate published here is a floor.</strong> Only works that finished inside a
+          published month can be measured at all, and those skew towards short jobs. The rate rises
+          steeply with both how long the work took (17% under a day, 43% beyond thirty) and its
+          category (13% for urgent work, 44% for major schemes), so the works missing from the count
+          are the ones most likely to have run over. Both breakdowns are shown so this can be checked
+          rather than taken on trust.</li>
+        <li><strong>Permits are not linked to individual faults here</strong>, and the tables say
+          nothing about any particular pin on the map. A distance-and-date join between the two was
+          built and tested against a null model that shuffles which fault sits at which location; it
+          reached at best about five times chance while covering only 1% of faults, meaning roughly
+          one in five surviving matches was still coincidence. Thames Water digs where its pipes are
+          and its faults are where its pipes are, so proximity alone carries much less information
+          than it appears to. Separately, about 18% of permits carry no coordinates at all, and those
+          are disproportionately the largest schemes — the ones that overrun most. Rather than
+          publish a weak link, the join is left unpublished.</li>
+        <li>The archive is published <strong>monthly, in arrears</strong>, so this lags the rest of
+          the site by up to a month. Only months whose archive is intact are used: the June 2026 file
+          is truncated where it was uploaded and is excluded.</li>
       </ul>
 
       <h3>Reports, and how they link to faults</h3>

@@ -35,6 +35,7 @@ REFERENCE = ROOT / "data" / "reference"
 POSTCODE_LA = REFERENCE / "postcode_la.json.gz"
 LA_HOUSEHOLDS = REFERENCE / "la_households.json"
 NOTES = ROOT / "data" / "notes.json"
+PERMITS_DIR = ROOT / "data" / "permits"
 
 EPOCH = dt.date(2020, 1, 1)
 # How much resolution history the "how fast do they fix things" panels use.
@@ -227,6 +228,31 @@ def cleared_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
         },
         "cols": cols,
     }
+
+
+def permits() -> dict:
+    """Thames Water's own street works permits, against their own deadlines (#6).
+
+    A different source on a different clock: DfT's Street Manager archive, one
+    zip a month in arrears, where the fault map is polled hourly. It is here
+    because it answers a question the fault feed cannot — whether the work
+    Thames Water actually did finished by the date they applied to finish by.
+
+    Empty when no monthly extract is committed, so the section simply does not
+    render rather than showing a zero.
+    """
+    try:
+        from collector.permit_join import load_permits, overruns
+    except ImportError:  # pragma: no cover - zoneinfo data missing
+        log.warning("permit analysis unavailable")
+        return {}
+    records = load_permits()
+    if not records:
+        return {}
+    result = overruns(records)
+    result["months"] = sorted(p.stem.replace(".ndjson", "")
+                              for p in PERMITS_DIR.glob("*.ndjson.gz"))
+    return result
 
 
 def notes() -> dict:
@@ -1013,6 +1039,7 @@ def build(db_path: Path, out: Path) -> None:
     _write(out / "summary.json", payload)
     _write(out / "open.json", open_faults(conn, today, by_fault))
     _write(out / "notes.json", notes())
+    _write(out / "permits.json", permits())
     _write(out / "cleared.json", cleared_faults(conn, today))
     _write(out / "reports.json", public_reports(conn, today, by_report))
     conn.close()

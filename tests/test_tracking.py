@@ -1100,3 +1100,142 @@ class BuildSiteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class PermitTests(unittest.TestCase):
+    """Street Manager permit extraction (#6)."""
+
+    def test_promoter_filter_excludes_the_near_misses(self):
+        from collector.permits import PROMOTER
+
+        # Real promoter names from the July 2026 archive. Two of these are
+        # councils whose name contains "Thames", and one is a separate company
+        # building the super sewer — none of them is Thames Water.
+        self.assertTrue(PROMOTER.search("THAMES WATER"))
+        self.assertTrue(PROMOTER.search("Thames Water Utilities Ltd"))
+        for other in ("ROYAL BOROUGH OF KINGSTON UPON THAMES",
+                      "LONDON BOROUGH OF RICHMOND UPON THAMES",
+                      "THAMES TIDEWAY TUNNEL LTD",
+                      "SEVERN TRENT WATER"):
+            self.assertIsNone(PROMOTER.search(other), other)
+
+    def test_coordinates_are_parsed_from_the_wkt_point(self):
+        from collector.permits import POINT
+
+        m = POINT.search("POINT(465761 366901)")
+        self.assertEqual((float(m.group(1)), float(m.group(2))), (465761.0, 366901.0))
+        # Whitespace and decimals both occur in the archive.
+        m = POINT.search("POINT (511234.5 178900.25)")
+        self.assertEqual((float(m.group(1)), float(m.group(2))), (511234.5, 178900.25))
+        self.assertIsNone(POINT.search(""))
+
+    def test_later_permit_events_win_when_merging(self):
+        """A permit's actual end date arrives on a later event than its grant."""
+        import gzip, json as _json
+        from collector import permit_join
+
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "2026-07.ndjson.gz"
+            with gzip.open(path, "wt") as out:
+                out.write(_json.dumps({"op": "meta", "month": "2026-07"}) + "\n")
+                out.write(_json.dumps({
+                    "permit_reference_number": "P-1", "event_type": "PERMIT_GRANTED",
+                    "easting": 500000.0, "northing": 180000.0,
+                    "proposed_end_date": "2026-07-10T00:00:00.000Z",
+                    "actual_end_date_time": None}) + "\n")
+                out.write(_json.dumps({
+                    "permit_reference_number": "P-1", "event_type": "WORK_STOP",
+                    "easting": 500000.0, "northing": 180000.0,
+                    "proposed_end_date": "2026-07-10T00:00:00.000Z",
+                    "actual_end_date_time": "2026-07-14T00:00:00.000Z"}) + "\n")
+
+            original = permit_join.PERMITS
+            permit_join.PERMITS = Path(tmp)
+            try:
+                permits = permit_join.load_permits()
+            finally:
+                permit_join.PERMITS = original
+
+        self.assertEqual(len(permits), 1, "events collapse to one row per permit")
+        self.assertEqual(permits[0]["actual_end_date_time"], "2026-07-14T00:00:00.000Z")
+
+    def test_events_without_coordinates_still_carry_their_end_date(self):
+        """Dropping point-less events lost completions for the biggest works.
+
+        2,959 of 16,653 permits in the July archive carry no coordinates at all,
+        and they are disproportionately Major and Standard works — the ones that
+        overrun most (54.3% late against 17.5%). Filtering them out at load time
+        removed them from the overrun figures entirely.
+        """
+        import gzip, json as _json
+        from collector import permit_join
+
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "2026-07.ndjson.gz"
+            with gzip.open(path, "wt") as out:
+                out.write(_json.dumps({"op": "meta", "month": "2026-07"}) + "\n")
+                out.write(_json.dumps({
+                    "permit_reference_number": "P-2", "event_type": "PERMIT_GRANTED",
+                    "work_category": "Major", "easting": None, "northing": None,
+                    "proposed_end_date": "2026-07-10T23:00:00.000Z",
+                    "actual_end_date_time": None}) + "\n")
+                out.write(_json.dumps({
+                    "permit_reference_number": "P-2", "event_type": "WORK_STOP",
+                    "work_category": "Major", "easting": None, "northing": None,
+                    "proposed_end_date": "2026-07-10T23:00:00.000Z",
+                    "actual_end_date_time": "2026-07-20T10:00:00.000Z"}) + "\n")
+
+            original = permit_join.PERMITS
+            permit_join.PERMITS = Path(tmp)
+            try:
+                permits = permit_join.load_permits()
+            finally:
+                permit_join.PERMITS = original
+
+        self.assertEqual(len(permits), 1)
+        self.assertEqual(permit_join.days_late(permits[0]), 10)
+        # ...and the join must still tolerate them rather than raising.
+        self.assertEqual(permit_join._grid(permits, 50), {})
+
+    def test_lateness_is_counted_in_london_calendar_days(self):
+        """A deadline is a day, not an instant.
+
+        Proposed ends are stored in UTC, so "end of 19 July" is 19T23:00Z —
+        midnight BST. Work finishing at 09:00 the next morning is one day late.
+        Subtracting the raw timestamps calls that "0.4 days over", which reads
+        as a rounding artefact and understates every overrun by most of a day.
+        """
+        from collector.permit_join import days_late
+
+        end_of_19_july = "2026-07-19T23:00:00.000Z"
+        # Finished at 23:15 BST on the 19th — inside the last permitted day.
+        self.assertEqual(days_late({"proposed_end_date": end_of_19_july,
+                                    "actual_end_date_time": "2026-07-19T22:15:00.000Z"}), 0)
+        # Finished at 09:00 BST on the 20th — one day late, not 0.4.
+        self.assertEqual(days_late({"proposed_end_date": end_of_19_july,
+                                    "actual_end_date_time": "2026-07-20T08:00:00.000Z"}), 1)
+        # Finished two days early.
+        self.assertEqual(days_late({"proposed_end_date": end_of_19_july,
+                                    "actual_end_date_time": "2026-07-17T12:00:00.000Z"}), -2)
+        # No recorded end: still running, or cancelled. Not an overrun.
+        self.assertIsNone(days_late({"proposed_end_date": end_of_19_july,
+                                     "actual_end_date_time": None}))
+
+    def test_grid_cell_must_match_the_search_radius(self):
+        """Indexing at one cell size and querying at another silently misses.
+
+        This is not hypothetical: the first parameter sweep reported zero
+        matches at 10m and 25m purely because the index was built at the 50m
+        default, and it read as "no signal at tight radii" rather than a bug.
+        """
+        from collector import permit_join
+
+        permits = [{"easting": 500000.0, "northing": 180000.0,
+                    "proposed_start_date": "2026-07-05T00:00:00.000Z"}]
+        faults = [{"id": "f1", "easting": 500008.0, "northing": 180000.0,
+                   "raised_at": "2026-07-04T00:00:00+00:00"}]
+        # 8m apart: inside 10m, and must be found when the radius says so.
+        self.assertEqual(len(permit_join.match(faults, permits, 10)), 1)
+        self.assertEqual(len(permit_join.match(faults, permits, 50)), 1)
+        # 8m apart is outside a 5m radius, whatever the index granularity.
+        self.assertEqual(len(permit_join.match(faults, permits, 5)), 0)

@@ -39,6 +39,18 @@ const state = {
 // the key into `history` and `faultReports`, which only exist for open faults.
 const rowsForMode = () => (state.mode === 'cleared' ? state.cleared : state.faults);
 
+// An annotation about a past event is only true while that event is inside the
+// window the figure covers. This has now gone wrong three times — the banner
+// tense (#25), the backlog chart's step note, and the backlog KPI reading "+275
+// over seven days" beneath "mostly the 9,620 work orders that stopped being
+// published". Each time the caveat outlived the thing it described and said
+// something false. One helper, used everywhere, so there is no fourth.
+function eventVisible(info, newestSeconds, windowDays) {
+  if (!info || !info.observed_at) return false;
+  if (!windowDays) return true;   // no window means everything is in view
+  return Date.parse(info.observed_at) / 1000 > newestSeconds - windowDays * 86400;
+}
+
 const $ = (sel) => document.querySelector(sel);
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -268,6 +280,7 @@ function renderKPIs() {
   const haveFlow = window.length >= 1;
   const spanHours = s.backlog.length ? Math.max(1, Math.round((newest - s.backlog[0].t) / 3600)) : 0;
   const shortSpan = spanHours < 24 * WINDOW_DAYS;
+  const eventInWindow = eventVisible(s.truncated, newest, WINDOW_DAYS);
 
   const cards = [
     {
@@ -301,8 +314,8 @@ function renderKPIs() {
           // It is not good news when the fall is a source-side event: rendering
           // a 12,613 collapse as a green improvement would be the site telling
           // the exact lie it exists to catch. Stay neutral and say why.
-          tone: s.truncated ? '' : (net > 0 ? 'bad' : 'good'),
-          note: s.truncated
+          tone: eventInWindow ? '' : (net > 0 ? 'bad' : 'good'),
+          note: eventInWindow
             ? `mostly the ${formatNumber(s.truncated.departed)} work orders that stopped being published — not work completed`
             : `${formatNumber(raised)} arrived, ${formatNumber(cleared)} cleared` +
               (shortSpan ? ` over ${formatNumber(spanHours)} hours` : ''),
@@ -1187,10 +1200,11 @@ function renderBacklogNote(info) {
   // Only when the collection it describes is actually on screen: pointing at
   // "the step on 5 August" under a chart that starts on the 9th is worse than
   // saying nothing.
-  const visible = info && (!state.range
-    || Date.parse(info.observed_at) / 1000 > state.summary.backlog[state.summary.backlog.length - 1].t
-       - state.range * 86400);
-  if (!visible) { host.hidden = true; return; }
+  const backlog = state.summary.backlog;
+  if (!eventVisible(info, backlog[backlog.length - 1].t, state.range)) {
+    host.hidden = true;
+    return;
+  }
   const when = new Date(info.observed_at)
     .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   const iso = info.observed_at.slice(0, 10);

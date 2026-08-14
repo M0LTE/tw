@@ -15,6 +15,53 @@
   ],
   "entries": [
     {
+      "date": "2026-08-14",
+      "title": "A third of the links between reports and repairs are coincidence",
+      "summary": "We tested the site's own matching by shuffling the addresses. It fires far more often on chance than we had claimed.",
+      "body": [
+        {
+          "p": "When you look up a problem someone reported, this site tries to show you the work order that followed it. Neither feed carries a reference number the other shares, so the link is inferred: a report and a work order on the same street, within a few days of each other."
+        },
+        {
+          "p": "We previously said 99–100% of those links were genuine. **That was wrong**, and it was wrong because of how we tested it."
+        },
+        {
+          "p": "The old test kept each report's address and moved its date by a month or more. Anything still matching had to be coincidence. It looked reassuring — almost nothing matched. But Thames Water raises far more work in August than in May, roughly 218 jobs a day against 112, so moving a report backwards in time put it against a thinner field and made chance look rarer than it is. Moving reports *forward* was worse still: it pushed them past the end of our data, where nothing could match at all."
+        },
+        {
+          "p": "The better test keeps every date exactly where it is and **shuffles which address belongs to which report**. Every report then faces precisely the same amount of work being raised as it really did. The only thing broken is the pairing of place and time — which is the entire thing the matching claims to detect."
+        },
+        {
+          "table": {
+            "head": ["Window allowed", "Links found", "Found by chance", "Attributable to the report"],
+            "rows": [
+              ["Within 1 day", "1,477", "353", "1,124"],
+              ["Within 3 days", "1,850", "631", "1,219"],
+              ["Within a week", "1,964", "1,025", "939"]
+            ]
+          }
+        },
+        {
+          "p": "So on the week-long window the site was using, **about half the links would have appeared anyway**. Not because the matching is broken, but because a busy street gets work regardless of who reported what. Take a street with a leak reported on Tuesday and unrelated sewer work booked for Thursday, and this site would have drawn a line between them."
+        },
+        {
+          "p": "The window is now **three days**, which is where the number of links actually caused by a report is highest. Going out to a week added 114 real links and 394 coincidental ones — it was making the picture worse, not fuller. About a third of what remains is still chance, and the site now says so next to every link rather than describing it vaguely as an association."
+        },
+        {
+          "p": "**What this means if you are looking up your own report.** A link shown here is a reason to ask Thames Water a question, not an answer. If the work order is at your address and appeared the day after you reported, that is fairly strong. If it is further down the street and three days later, it may have nothing to do with you."
+        },
+        {
+          "p": "Two smaller faults turned up while checking this. Work orders that had been completed were being listed twice, so **787 reports were told their match was ambiguous when only one work order was involved** — the site was inventing doubt in the one place it tries hardest not to guess. And links to work orders that had already left the map were rendered as though you could click through to them, which did nothing. Both fixed."
+        },
+        {
+          "p": "None of this changes how many reports become work orders, which is still the thing we cannot honestly tell you. Reports with no address cannot be matched at all, a job may be recorded at a neighbour's address, and a report about a problem already logged may never generate a work order of its own while still being acted on."
+        }
+      ],
+      "refs": [
+        { "label": "Issue #1 — the working, and what a conversion rate still needs", "url": "https://github.com/M0LTE/tw/issues/1" }
+      ]
+    },
+    {
       "date": "2026-08-11",
       "title": "A job can be finished a day before their map admits it",
       "summary": "A work order stays on Thames Water's map for exactly 24 or 72 hours after they close it. And departures are now almost always confirmed — up from about 70% before.",

@@ -1304,6 +1304,44 @@ function renderStages(d) {
 // a single month's archive are disproportionately short works, and the late
 // rate climbs steeply with both duration and category — so the headline is a
 // floor, and these tables are why we are entitled to say so.
+// How much the headline is missing, shown rather than asserted.
+//
+// A work still running when the last archive closes cannot be counted, so
+// recent months under-count long jobs — and long jobs overrun most. The control
+// column is what makes this an argument rather than a hunch: works finishing
+// inside two days are fully observed in every month, so their rate holds steady
+// while the all-works rate climbs with the observation window. The gap between
+// them is the censoring, in percentage points.
+function cohorts(rows) {
+  if (!rows || rows.length < 2) return '';
+  const month = (m) => new Date(`${m}-01T00:00:00Z`)
+    .toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const best = rows.reduce((a, b) => (b.gap > a.gap ? b : a));
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Works starting in</th><th>Works</th><th>Share late</th>
+        <th>Of those, finishing in under 2 days</th><th>Share late</th><th>Gap</th>
+      </tr></thead>
+      <tbody>${rows.map((r) => `
+        <tr><td>${escape(month(r.month))}</td>
+            <td class="num">${formatNumber(r.n)}</td>
+            <td class="num">${r.pct.toFixed(1)}%</td>
+            <td class="num pinned">${formatNumber(r.short_n)}</td>
+            <td class="num pinned">${r.short_pct.toFixed(1)}%</td>
+            <td class="num"><strong>${r.gap > 0 ? '+' : ''}${r.gap.toFixed(1)}pp</strong></td></tr>`).join('')}
+      </tbody>
+    </table></div>
+    <p class="footnote"><strong>Read the headline as a floor, and this is roughly how far
+      short.</strong> A job still running when the last month of records closes cannot be
+      counted at all, so the most recent months are missing their longest jobs &mdash; and
+      long jobs are the ones that overrun. The short-job column is the control: those finish
+      well within any month, so they are counted the same way throughout, and their rate
+      barely moves. The earliest months, which have had the longest to be observed, run up to
+      ${best.gap.toFixed(1)} percentage points above their own short-job rate. Later months
+      have not had that time yet.</p>`;
+}
+
 function renderPermits(d) {
   const host = $('#permits-body');
   if (!host) return;
@@ -1356,10 +1394,7 @@ function renderPermits(d) {
       an approved extension is not an overrun. Worst overrun observed: ${d.max_days_late} days.</p>
     ${band(d.by_duration, 'How long the work actually took', DURATIONS)}
     ${band(d.by_category, 'Work category')}
-    <p class="footnote"><strong>Read the headline as a floor.</strong> Only works that
-      finished within a published month can be measured, and those skew short; the late rate
-      rises with both duration and category, so the works missing from this table are the ones
-      most likely to have overrun.</p>`;
+    ${cohorts(d.by_start_month)}`;
 }
 
 // ── Notes ───────────────────────────────────────────────────────

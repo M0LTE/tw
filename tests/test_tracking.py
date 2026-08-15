@@ -1267,6 +1267,53 @@ class PermitTests(unittest.TestCase):
         self.assertIsNone(days_late({"proposed_end_date": end_of_19_july,
                                      "actual_end_date_time": None}))
 
+    def test_start_month_cohorts_drop_months_we_hold_no_archive_for(self):
+        """#34 — a month missing its own archive is the wrong sample, not a small one.
+
+        The only works visible from such a month are those that happened to
+        finish in a later one, which selects precisely for the longest jobs.
+        2026-06 shows 20.4% of its works running beyond ten days against
+        1.5–5.3% everywhere else, on 657 works — no row-count threshold catches
+        that, so it is excluded on the structural ground instead.
+        """
+        from collector import permit_join
+
+        def work(month, day_len, late):
+            start = f"2026-{month}-02T08:00:00.000Z"
+            end = f"2026-{month}-{2 + day_len:02d}T08:00:00.000Z"
+            # Deadline is the day the work ends, minus `late` days.
+            due = f"2026-{month}-{2 + day_len - late:02d}T23:00:00.000Z"
+            return ({"actual_start_date_time": start, "actual_end_date_time": end,
+                     "proposed_end_date": due}, late)
+
+        finished = ([work("05", 1, 1)] * 600) + ([work("06", 1, 1)] * 600)
+        held = permit_join.by_start_month(finished, held={"2026-05"})
+        self.assertEqual([r["month"] for r in held], ["2026-05"])
+        # Without the filter both survive, so the filter is what excludes it —
+        # not the 500-work threshold.
+        either = permit_join.by_start_month(finished)
+        self.assertEqual([r["month"] for r in either], ["2026-05", "2026-06"])
+
+    def test_start_month_cohorts_carry_a_fully_observed_control(self):
+        """The gap is only an argument if the control is counted the same way."""
+        from collector import permit_join
+
+        def work(days, late):
+            end_day = 2 + days
+            return ({"actual_start_date_time": "2026-05-02T08:00:00.000Z",
+                     "actual_end_date_time": f"2026-05-{end_day:02d}T08:00:00.000Z",
+                     "proposed_end_date": f"2026-05-{end_day - late:02d}T23:00:00.000Z"}, late)
+
+        # 400 short jobs, none late; 200 long jobs, all late.
+        finished = ([work(1, 0)] * 400) + ([work(20, 5)] * 200)
+        row = permit_join.by_start_month(finished, held={"2026-05"})[0]
+        self.assertEqual(row["n"], 600)
+        self.assertEqual(row["short_n"], 400, "under-two-day jobs are the control")
+        self.assertEqual(row["pct"], 33.3)
+        self.assertEqual(row["short_pct"], 0.0)
+        self.assertEqual(row["gap"], 33.3, "the gap is what the long jobs add")
+        self.assertEqual(row["long_pct"], 33.3)
+
     def test_grid_cell_must_match_the_search_radius(self):
         """Indexing at one cell size and querying at another silently misses.
 

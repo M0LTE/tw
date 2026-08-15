@@ -69,6 +69,11 @@ def _local(timestamp: str) -> dt.datetime:
     return dt.datetime.fromisoformat(timestamp.replace("Z", "+00:00")).astimezone(LONDON)
 
 
+def held_months() -> set[str]:
+    """The months we actually hold an archive for, as YYYY-MM."""
+    return {Path(p).name.split(".")[0] for p in glob.glob(str(PERMITS / "*.ndjson.gz"))}
+
+
 def load_permits() -> list[dict]:
     """Every committed monthly extract, one row per permit (not per event)."""
     by_permit: dict[str, dict] = {}
@@ -125,6 +130,59 @@ def _duration_band(days: float) -> str:
     return "over 30 days"
 
 
+def by_start_month(finished: list[tuple[dict, int]], held: set[str] | None = None) -> list[dict]:
+    """Late rate per starting month, against the observation window it had.
+
+    The censoring correction, computed rather than asserted. A work still
+    running when the last archive closes cannot be measured, so months near the
+    end of the held range under-count long works — and long works overrun most.
+
+    `short` is the control. Works finishing inside two days are fully observed
+    whatever the window, so their rate isolates genuine month-to-month variation
+    from the artefact; the *gap* between the two columns is what the missing
+    observation window is worth. Computed here rather than written into the
+    page so it cannot go stale as months are added.
+
+    A month whose own archive we do not hold is dropped, not merely thinned. The
+    only works visible from such a month are those whose completion landed in a
+    later archive, which selects precisely for the long ones: 2026-06 shows 20.4%
+    of its works running beyond ten days against 1.5-5.3% everywhere else. That
+    is a structurally unrepresentative cohort, and no row count filter would
+    catch it.
+    """
+    buckets: dict[str, dict] = collections.defaultdict(
+        lambda: {"n": 0, "late": 0, "short_n": 0, "short_late": 0, "long_n": 0})
+    for permit, late in finished:
+        started = permit.get("actual_start_date_time")
+        if not started:
+            continue
+        row = buckets[_local(started).strftime("%Y-%m")]
+        days = (_local(permit["actual_end_date_time"]) - _local(started)).total_seconds() / 86400
+        row["n"] += 1
+        row["late"] += late > 0
+        row["long_n"] += days > 10
+        if days < 2:
+            row["short_n"] += 1
+            row["short_late"] += late > 0
+
+    out = []
+    for month, row in sorted(buckets.items()):
+        # Thin months are the ragged edges of the held range, not cohorts.
+        if row["n"] < 500 or not row["short_n"]:
+            continue
+        if held is not None and month not in held:
+            continue
+        pct = round(100 * row["late"] / row["n"], 1)
+        short_pct = round(100 * row["short_late"] / row["short_n"], 1)
+        out.append({
+            "month": month, "n": row["n"], "pct": pct,
+            "short_n": row["short_n"], "short_pct": short_pct,
+            "gap": round(pct - short_pct, 1),
+            "long_pct": round(100 * row["long_n"] / row["n"], 1),
+        })
+    return out
+
+
 def overruns(permits: list[dict]) -> dict:
     """How often Thames Water finished by the date they applied to finish by.
 
@@ -158,6 +216,7 @@ def overruns(permits: list[dict]) -> dict:
     late_days = sorted(late for _, late in finished if late > 0)
     unfinished = collections.Counter(
         p.get("work_status") or "unrecorded" for p in permits if days_late(p) is None)
+    cohorts = by_start_month(finished, held_months())
 
     return {
         "permits": len(permits),
@@ -174,6 +233,7 @@ def overruns(permits: list[dict]) -> dict:
         "by_category": {k: {"n": v[0], "late": v[1], "pct": round(100 * v[1] / v[0], 1)}
                         for k, v in by_category.items()},
         "unfinished": dict(unfinished.most_common()),
+        "by_start_month": cohorts,
     }
 
 
@@ -293,6 +353,12 @@ def main(argv: list[str] | None = None) -> int:
         if band in result["by_duration"]:
             row = result["by_duration"][band]
             print(f"    {band:14s} {row['n']:6,} {row['pct']:5.1f}%")
+    print("\n  late rate by starting month, against its observation window:")
+    print(f"    {'month':8s} {'works':>7} {'late':>7} {'short<2d':>9} {'late':>7} {'gap':>7} {'>10d':>6}")
+    for row in result["by_start_month"]:
+        print(f"    {row['month']:8s} {row['n']:7,} {row['pct']:6.1f}% "
+              f"{row['short_n']:9,} {row['short_pct']:6.1f}% {row['gap']:+6.1f}pp {row['long_pct']:5.1f}%")
+
     print("\n  late rate by work category:")
     for name, row in sorted(result["by_category"].items(), key=lambda kv: -kv[1]["n"]):
         print(f"    {name:24s} {row['n']:6,} {row['pct']:5.1f}%")

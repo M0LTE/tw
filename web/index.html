@@ -377,16 +377,19 @@
           &ldquo;0.4 days over&rdquo;.</li>
         <li>Where a permit was <strong>extended and the extension granted</strong>, the comparison
           uses the revised date. An extension that was applied for and approved is not an overrun.</li>
-        <li><strong>The late rate published here is a floor</strong>, and the gap has been measured
-          rather than guessed at. Only works that finished inside a published month can be counted,
-          and those skew towards short jobs; the rate rises with both how long the work took (19.5%
-          under a day, 34.7% beyond thirty) and its category (14.1% for urgent work, 41.5% for major
-          schemes). Because we hold consecutive months, the size of the effect is visible directly:
-          works starting in April, which had a second archive to finish in, ran <strong>25.5%</strong>
-          late, against <strong>20.7%</strong> for works starting in July, whose completions are cut
-          off at the month end. The better-observed cohort also contains more long jobs &mdash; 2.6%
-          ran beyond ten days against 1.6%. Both breakdowns are shown so this can be checked rather
-          than taken on trust.</li>
+        <li><strong>The late rate published here is a floor</strong>, and roughly how far short is
+          shown on the overview rather than asserted here. A job still running when the last month of
+          records closes cannot be counted, so recent months are missing their longest jobs &mdash;
+          and the late rate rises with both how long the work took and its category. The table by
+          starting month sets each month against a control of jobs finishing inside two days, which
+          are counted the same way throughout; the earliest months run several percentage points
+          above their own control, the most recent barely any. Every figure there is recomputed on
+          each build, so it tracks the months actually held rather than going stale.</li>
+        <li>A month whose own archive is missing is <strong>excluded from that table entirely</strong>
+          rather than shown with a caveat. The only works visible from such a month are those that
+          happened to finish in a later one, which selects precisely for the longest jobs &mdash;
+          June 2026 shows 20.4% of its works running beyond ten days, against 1.5&ndash;5.3%
+          everywhere else. That is not a small sample, it is the wrong sample.</li>
         <li><strong>Permits are not linked to individual faults here</strong>, and the tables say
           nothing about any particular pin on the map. A distance-and-date join between the two was
           built and tested against a null model that shuffles which fault sits at which location; it

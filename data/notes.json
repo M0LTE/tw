@@ -120,7 +120,7 @@
     {
       "date": "2026-08-14",
       "title": "Thames Water mostly meets the deadlines it sets itself — on the small jobs",
-      "summary": "Their own road-opening permits are now published here, three months of them. Four out of five completed works finished by the date they applied for; the exceptions are concentrated in the big schemes, and the true rate is higher than the count can show.",
+      "summary": "Their own road-opening permits are now published here, six months of them. Four out of five completed works finished by the date they applied for; the exceptions are concentrated in the big schemes, and the true rate is higher than the count can show.",
       "body": [
         {
           "p": "Before Thames Water can dig up a road, it has to apply to the highway authority for a permit saying when the work will start and finish. The Department for Transport publishes those applications, and the dates the work actually started and stopped. That makes a question askable that the fault map alone cannot answer: **when they finally did the work, did it finish when they said it would?**"
@@ -138,34 +138,34 @@
             "rows": [
               [
                 "Finished early",
-                "6,760",
-                "31.2%"
+                "13,792",
+                "31.8%"
               ],
               [
                 "Finished on the last permitted day",
-                "10,073",
-                "46.4%"
+                "19,377",
+                "44.7%"
               ],
               [
                 "Finished late",
-                "4,858",
-                "22.4%"
+                "10,204",
+                "23.5%"
               ],
               [
                 "…of which, by exactly one day",
-                "4,569",
-                "21.1%"
+                "9,477",
+                "21.8%"
               ],
               [
                 "…more than a day late",
-                "289",
-                "1.3%"
+                "727",
+                "1.7%"
               ]
             ]
           }
         },
         {
-          "p": "From 40,673 permits published for April, May and July 2026, of which 21,691 record both a proposed and an actual end. **Roughly one in five completed works finished late, but almost all of those by a single day.** Only 289 ran more than a day over. The worst was 89 days."
+          "p": "From 72,000 permits published across six months of 2026, of which 43,373 record both a proposed and an actual end. **Roughly one in four completed works finished late, but almost all of those by a single day.** Only 727 ran more than a day over. The worst was 95 days."
         },
         {
           "p": "That single-day figure deserves a caveat rather than a headline. A job finishing at nine the morning after its permit expired is counted late here, and in a working sense it very nearly was not. What the number does rule out is a picture of routine, sustained overrunning on ordinary repairs."
@@ -183,64 +183,40 @@
             "rows": [
               [
                 "Major",
-                "1,028",
-                "41.5%"
+                "1,956",
+                "41.6%"
               ],
               [
                 "Standard",
-                "1,073",
-                "35.6%"
+                "2,166",
+                "38.7%"
               ],
               [
                 "Minor",
-                "8,075",
-                "29.4%"
+                "17,223",
+                "29.1%"
               ],
               [
                 "Immediate — emergency",
-                "1,370",
-                "17.7%"
+                "2,613",
+                "16.3%"
               ],
               [
                 "Immediate — urgent",
-                "10,145",
-                "14.1%"
+                "19,415",
+                "16.1%"
               ]
             ]
           }
         },
         {
-          "p": "Urgent and emergency work — the burst main, the flooded street — is the most likely to finish on time. Major planned schemes are three times more likely to run over. The same gradient shows against how long the work actually took: 19.5% of jobs under a day ran late, against 34.7% of jobs lasting more than a month."
+          "p": "Urgent and emergency work — the burst main, the flooded street — is the most likely to finish on time. Major planned schemes are about two and a half times more likely to run over. The same gradient shows against how long the work actually took: 18.3% of jobs under a day ran late, against 35.5% of jobs lasting more than a month."
         },
         {
-          "p": "**That gradient is why the 22.4% should be read as a floor** — and now that three months are held, the size of the shortfall can be shown rather than asserted. Only works finishing inside a published month can be counted at all, so a job still running when the archive closes is invisible, and long jobs are the ones that overrun. April's works had a second month to finish in. July's did not:"
+          "p": "**That gradient is why the 23.5% should be read as a floor** — and with six months held, roughly how far short can be shown rather than asserted. A job still running when the last month of records closes cannot be counted at all, so recent months are missing their longest jobs. The last column is the control: jobs finishing inside two days are counted the same way in every month, and their rate barely moves."
         },
         {
-          "table": {
-            "head": [
-              "Works starting in",
-              "Completions observable in",
-              "Works",
-              "Share late",
-              "Ran over ten days"
-            ],
-            "rows": [
-              [
-                "April 2026",
-                "April and May",
-                "7,095",
-                "25.5%",
-                "2.6%"
-              ],
-              [
-                "July 2026",
-                "July only",
-                "7,102",
-                "20.7%",
-                "1.6%"
-              ]
-            ]
-          }
+          "p": "The short-job rate sits in a narrow band whatever the month, so Thames Water's underlying performance on quick jobs is roughly constant. The all-works rate is not: it runs 10.2 points above the control for January, which has had five months to be observed, and close to nothing for the most recent months, which have not. **The gap is the measurement catching up, not performance changing.** Each further month of records pushes the published figure up a little — it has gone from 21.0% to 23.5% as three months became six — and it has not finished climbing."
         },
         {
           "p": "Two cohorts of near-identical size, five percentage points apart, and the better-observed one carries more than half again as many long jobs. **The published 22.4% is short of the truth by something like that much**, and would keep climbing as more months are added. The June 2026 archive would have closed the gap between May and July, but the file on DfT's server is truncated where it was uploaded, so May's works are measured against a single month too."

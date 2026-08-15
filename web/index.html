@@ -321,9 +321,16 @@
           carrying it still have outstanding line items on them, against <strong>2.8%</strong> of
           those marked <em>Completed</em>. Of 947 times we have watched a work order move into it,
           <strong>688</strong> saw its count of open line items go <em>up</em> at that moment, not
-          down. Records sit there for about 72 hours and then age off the map. It is treated here as
-          an absence of a verdict, and where a fault's status contradicts its own line-item count the
-          Faults tab marks it.</li>
+          down. It is treated here as an absence of a verdict, and where a fault's status contradicts
+          its own line-item count the Faults tab marks it.</li>
+        <li><strong>The completion timestamp on those records moves.</strong> Of 1,093 work orders
+          that have had a <code>repair_complete_at</code> set, 751 had it revised afterwards, across
+          2,001 revisions &mdash; every one of which pushed it <em>later</em>, none earlier. It
+          appears to follow the most recently finished task on a job rather than the finishing of the
+          job, which restarts the 72-hour countdown that removes the pin. So a record can show a
+          finished status for <strong>ten days</strong> while the date beside it never reads older
+          than three. Where the two disagree, this site counts from the status we watched change,
+          not from the timestamp.</li>
         <li><strong>Time to fix</strong> counts from the raised date to the day the fault left the map.
           Faults already open when tracking began are included, so the figure is if anything generous.
           A minority of closed records carry a real closure date; most do not.</li>

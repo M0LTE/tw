@@ -71,13 +71,43 @@
           "p": "Planning to complete in seventy-six minutes, with the job's total line items going from four to eight. That work order's type is *Visible Leak **Investigation***, which points at the likeliest explanation: the **investigation** finished and the **repair** was raised at the same instant, and the single work-order status reports the first of those. A resident of that street separately reported an open excavation, barriers and Thames Water signage on site, and had that same day received notice from Thames Water that the repair was still to be done."
         },
         {
-          "p": "*Repair Complete* also behaves like a waiting room rather than an ending. Records carry a `remain_on_map_hrs` of 72, and the oldest one currently sitting at that status reached it 3.1 days ago — median 1.1 days. It is the state a pin occupies while it ages off the map. Of 922 work orders we have seen enter it, only **193** later acquired a *Completed* verdict; **679** are still listed as *Repair Complete*."
+          "p": "*Repair Complete* also behaves like a waiting room rather than an ending — and how long a wait depends on which clock you read. Thames Water's own completion stamp on these records is never more than about three days old. The records themselves have been showing *Repair Complete* for considerably longer:"
+        },
+        {
+          "table": {
+            "head": [
+              "Time at “Repair Complete”, measured from",
+              "Median",
+              "Longest",
+              "Over a week"
+            ],
+            "rows": [
+              [
+                "Thames Water's completion timestamp",
+                "1.1 days",
+                "3.1 days",
+                "none"
+              ],
+              [
+                "When we watched the status actually change",
+                "2.1 days",
+                "10.4 days",
+                "63 faults"
+              ]
+            ]
+          }
+        },
+        {
+          "p": "**63 faults have been publicly showing a finished status for over a week**, the longest for ten and a half days, while the timestamp beside them never reads older than three. The reason is that the timestamp is not a completion time at all: **it is continually pushed forward.** Of 1,093 records that have had one set, 751 — 68.7% — were later revised, across 2,001 separate revisions. **Every single one moved the time later. Not one moved it earlier.** The typical jump is fifteen hours; some records have been revised eight times or more."
+        },
+        {
+          "p": "And it moves in step with the line items above. 94.1% of those revisions land in the same update as a change to the count of *closed* line items, and **every one of those is an increase**. In 1,469 of them, open line items remained above zero afterwards. So the stamp appears to track the most recently finished task on the job, not the finishing of the job — each task that completes pushes it forward, which restarts the 72-hour countdown that removes the pin from the map. That is why 434 of the 447 records currently at *Repair Complete* carry a stamp less than 72 hours old while some have been sitting there for a week and a half."
         },
         {
           "p": "**What has changed here.** This site no longer counts *Repair Complete* as an outcome. It moves from “faults we can account for” to “no outcome published”, which moves 382 records and changes the cancelled share of explained departures from 12.7% to 13.8%. On the Faults tab, any fault whose status sounds finished while its own line-item count says otherwise is now marked."
         },
         {
-          "p": "**What this does not prove.** Thames Water does not document what a line item is, so an open one is not direct evidence that a hole is unfilled. The claim rests on the contrast — 79.8% against 2.8% — and on the direction the counter moves, both of which anyone can reproduce from the change log. The eyewitness account is what prompted the check; it is not what the finding stands on. It is also possible this is an artefact of how a repair job is split from an investigation job internally, in which case the status is not dishonest so much as useless to a member of the public reading it."
+          "p": "**What this does not prove.** Thames Water does not document what a line item is, so an open one is not direct evidence that a hole is unfilled. The claim rests on the contrast — 79.8% against 2.8% — and on the direction the counter moves, both of which anyone can reproduce from the change log. The eyewitness account is what prompted the check; it is not what the finding stands on. Nor does any of this show that a *repair* took ten days: what was observed is that the record showed a finished status for ten days, which is a claim about what the public was told, not about what is in the ground. It is also possible this is an artefact of how a repair job is split from an investigation job internally, in which case the status is not dishonest so much as useless to a member of the public reading it."
         }
       ],
       "refs": [

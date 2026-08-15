@@ -1379,9 +1379,75 @@ function renderSurvival(d) {
       extends by a day for every day collection runs. The right-hand column is how many faults
       remain under observation at each point: the estimate thins as it goes, and the margin widens
       with it.</p>
-    ${ret}`;
+    ${ret}
+    <div id="survival-long" hidden></div>`;
 
   stepChart($('#chart-survival'), d.curve.map(([t, s]) => [t, 100 * (1 - s)]),
+    { markers: d.horizons, yLabel: 'Share of faults cleared' });
+
+  renderLongRange(state.summary.survival_by_age, d);
+}
+
+// The same question asked of every fault rather than only the ones watched from
+// the start, so it can reach months instead of days (#36).
+//
+// The framing is the whole risk here. Each fault contributes only the length of
+// the collection window in exposure, whatever its age, so this is a *period*
+// estimate — what current clearance rates imply — and not the history of any
+// real cohort. A curve reaching five months will be read as "they followed
+// faults for five months" unless the page says otherwise in plain words.
+function renderLongRange(d, incident) {
+  const host = $('#survival-long');
+  if (!host) return;
+  if (!d || !d.curve || !d.horizons.length) { host.hidden = true; return; }
+  host.hidden = false;
+
+  const rows = d.horizons.map((h) => `
+    <tr><td>Within ${h.days} days</td>
+        <td class="num">${h.cleared_pct.toFixed(1)}%</td>
+        <td class="num pinned">${formatNumber(h.at_risk)}</td></tr>`).join('');
+
+  // Where the two estimates overlap they should agree. Saying so, with the
+  // numbers, is worth more than either on its own.
+  const shared = incident && incident.horizons
+    ? d.horizons.find((h) => incident.horizons.some((i) => i.days === h.days))
+    : null;
+  const agreement = shared ? (() => {
+    const other = incident.horizons.find((i) => i.days === shared.days);
+    return `<p class="footnote">The two overlap at ${shared.days} days and can be checked against
+      each other there: <strong>${shared.cleared_pct.toFixed(1)}%</strong> from this estimate,
+      <strong>${other.cleared_pct.toFixed(1)}%</strong> from the faults followed individually
+      above. They are built from different populations by different methods, so agreeing is
+      evidence that neither is badly wrong.</p>`;
+  })() : '';
+
+  host.innerHTML = `
+    <h3 style="font-size:13.5px;margin:26px 0 6px">Looking further out</h3>
+    <p class="footnote" style="margin:0 0 10px">The estimate above can only reach as far as the
+      oldest fault we have followed from the start. This one uses all
+      ${formatNumber(d.faults)} faults instead, by letting each join the calculation at whatever
+      age it was when we first saw it &mdash; a fault first seen at six months old says nothing
+      about surviving six months, but it does say something about what happens next.</p>
+    <div class="chart-host" id="chart-survival-long"></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Share cleared</th><th>Estimate</th><th>Faults under observation</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    ${agreement}
+    <p class="footnote"><strong>This is what current rates imply, not the story of any real
+      fault.</strong> Every record contributes at most a fortnight of watching, whatever its age,
+      so the rate at four months comes from faults that happen to be about four months old right
+      now. The curve answers &ldquo;if this fortnight&rsquo;s clearance rates held at every age,
+      how long would a fault raised today take?&rdquo; &mdash; nothing here has been watched for
+      four months. It stops at ${d.horizon_days} days, where fewer than ${d.min_at_risk} faults
+      remain under observation and the estimate stops being a measurement.</p>
+    <p class="footnote">One caveat larger than the rest: of the faults that left the map, roughly
+      two thirds went in bulk removals the closed feed never confirmed. Those are treated as
+      &ldquo;stopped watching&rdquo; rather than &ldquo;fixed&rdquo;, which is the honest
+      handling but rests on the assumption that they would have behaved like the records that
+      stayed. If instead they were quietly finished work, this overstates how long faults take.</p>`;
+
+  stepChart($('#chart-survival-long'), d.curve.map(([t, s]) => [t, 100 * (1 - s)]),
     { markers: d.horizons, yLabel: 'Share of faults cleared' });
 }
 

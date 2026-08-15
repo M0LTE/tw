@@ -1315,6 +1315,100 @@ class SurvivalTests(unittest.TestCase):
         self.assertAlmostEqual(groups[72]["median_days"], 3.25, places=2)
 
 
+class DelayedEntryTests(unittest.TestCase):
+    """#36 — reaching past the observation window by letting faults enter late."""
+
+    START = "2026-06-01T00:00:00+00:00"
+    NOW = "2026-06-12T00:00:00+00:00"
+
+    def _db(self, faults):
+        tmp = TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "d.db"
+        conn = store.rebuild(path, Path(tmp.name) / "deltas")
+        for moment in (self.START, self.NOW):
+            conn.execute(
+                "INSERT INTO snapshots (observed_at, total, appeared, changed, resolved,"
+                " reappeared, source_counts) VALUES (?, 0, 0, 0, 0, 0, '{}')", (moment,))
+        for i, (raised, seen, resolved, is_open) in enumerate(faults):
+            conn.execute(
+                "INSERT INTO faults (id, source, raised_at, first_seen_at, resolved_at,"
+                " is_open, reappearances, last_changed_at)"
+                " VALUES (?, 'clean', ?, ?, ?, ?, 0, ?)",
+                (f"d{i}", raised, seen, resolved, 1 if is_open else 0, resolved or self.NOW))
+        conn.commit()
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def test_a_fault_is_not_at_risk_before_we_could_see_it(self):
+        """The whole point of delayed entry, and the easiest thing to get wrong.
+
+        A fault first seen at 100 days old tells us nothing about surviving to
+        day 50 — it had already done so before anyone was watching, and counting
+        it in the day-50 risk set would treat a survivor as though its survival
+        had been observed. That is the length bias, reintroduced by the back
+        door, and it makes early clearance look rarer than it is.
+
+        Here: 300 faults enter at age 100 and clear at 101. 300 more are watched
+        from birth and all clear by day 2. If the late entrants were wrongly
+        counted as at risk early, the estimated clearance in the first two days
+        would be diluted from 100% towards a half.
+        """
+        from collector import build_site
+
+        young = [("2026-06-09T00:00:00+00:00", "2026-06-09T00:00:00+00:00",
+                  "2026-06-11T00:00:00+00:00", False)] * 300
+        # raised 100 days before we first saw them, cleared a day later
+        old = [("2026-03-01T00:00:00+00:00", "2026-06-09T00:00:00+00:00",
+                "2026-06-10T00:00:00+00:00", False)] * 300
+        conn = self._db(young + old)
+        result = build_site.survival_by_age(conn)
+        conn.close()
+
+        self.assertEqual(result["faults"], 600)
+        self.assertEqual(result["events"], 600)
+        by_two = next(h for h in result["horizons"] if h["days"] == 7)
+        self.assertAlmostEqual(by_two["cleared_pct"], 100.0, places=1,
+                               msg="late entrants must not dilute the early risk set")
+
+    def test_the_curve_stops_where_the_risk_set_runs_out(self):
+        """No tail drawn from a handful of records at an age nobody watched."""
+        from collector import build_site
+
+        # 400 faults clearing young, plus 20 stragglers alive at ~200 days.
+        faults = [("2026-06-09T00:00:00+00:00", "2026-06-09T00:00:00+00:00",
+                   "2026-06-10T00:00:00+00:00", False)] * 400
+        faults += [("2025-11-20T00:00:00+00:00", "2026-06-01T00:00:00+00:00",
+                    "2026-06-10T00:00:00+00:00", False)] * 20
+        conn = self._db(faults)
+        result = build_site.survival_by_age(conn)
+        conn.close()
+
+        self.assertLess(result["horizon_days"], 190,
+                        "20 faults is below MIN_AT_RISK and must not extend the curve")
+        self.assertTrue(all(h["days"] <= result["horizon_days"] for h in result["horizons"]))
+
+    def test_bulk_departures_do_not_count_as_clearances(self):
+        """69% of real departures are bulk removals; miscounting them wrecks it."""
+        from collector import build_site
+
+        # 250 ordinary departures, each in its own collection.
+        faults = [("2026-06-08T00:00:00+00:00", "2026-06-08T00:00:00+00:00",
+                   f"2026-06-09T{i // 60:02d}:{i % 60:02d}:00+00:00", False)
+                  for i in range(250)]
+        # ...and one collection taking 400 at once, which the closed feed never
+        # confirms, so it is a publication event rather than 400 repairs.
+        bulk_at = "2026-06-10T00:00:00+00:00"
+        faults += [("2026-06-08T00:00:00+00:00", "2026-06-08T00:00:00+00:00",
+                    bulk_at, False)] * 400
+        conn = self._db(faults)
+        result = build_site.survival_by_age(conn)
+        conn.close()
+        self.assertEqual(result["faults"], 650)
+        self.assertEqual(result["events"], 250,
+                         "the 400 uncorroborated bulk departures must censor")
+
+
 class PermitTests(unittest.TestCase):
     """Street Manager permit extraction (#6)."""
 

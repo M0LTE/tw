@@ -10,6 +10,7 @@ Run with ``python -m collector.build_site``.
 from __future__ import annotations
 
 import argparse
+import bisect
 import collections
 import datetime as dt
 import gzip
@@ -44,6 +45,12 @@ PERMITS_DIR = ROOT / "data" / "permits"
 # off the map over the following 72 hours. Treated as an absence of a verdict
 # rather than as a repair. See #32 for the working.
 INCONCLUSIVE_STATUS = "Repair Complete"
+
+# Below this many faults still under observation, a survival estimate is a
+# rumour rather than a measurement — a handful of records at an age nothing was
+# watched through. The delayed-entry curve stops there rather than drawing a
+# tail, and the cutoff moves outward on its own as history accumulates.
+MIN_AT_RISK = 100
 
 EPOCH = dt.date(2020, 1, 1)
 # How much resolution history the "how fast do they fix things" panels use.
@@ -404,6 +411,140 @@ def survival(conn: sqlite3.Connection) -> dict:
             statistics.median([d for d, c in observations if c]), 2) if events else None,
         # Not repair time — see the comment above. The floor under all of it.
         "retention": retention,
+    }
+
+
+def survival_by_age(conn: sqlite3.Connection) -> dict:
+    """Time to clear beyond the observation window, by delayed entry (#36).
+
+    ``survival()`` can only speak to the age of the oldest fault it has watched
+    from raising — eleven days at the time of writing — while the numbers this
+    site leads on are about the long tail: hundreds of faults open over a year.
+    This closes that gap using every fault rather than the incident cohort, by
+    letting each one enter the risk set at the age it was *first seen* instead
+    of at zero. A fault first observed at 200 days old tells us nothing about
+    surviving to 200 days, but it does tell us about clearing at 201.
+
+    ## This is a period estimate and must be labelled as one
+
+    Every fault contributes at most the length of the collection window in
+    exposure, whatever its age. So the hazard at 300 days is measured from a
+    fortnight's worth of faults that happen to be about 300 days old now, and
+    the curve answers "if the clearance rates seen this fortnight held at every
+    age, how long would a fault raised today take?"
+
+    It is emphatically *not* the experience of a real cohort — nothing here has
+    been watched for 300 days. The distinction is period versus cohort life
+    expectancy, and a curve reaching a year will be misread as "we followed
+    faults for a year" unless the page says otherwise in those words.
+    """
+    first, latest = conn.execute(
+        "SELECT min(observed_at), max(observed_at) FROM snapshots").fetchone()
+    if not first or not latest:
+        return {}
+    now = dt.datetime.fromisoformat(latest)
+    flagged = uncorroborated_bulk_departures(conn)
+
+    entries: list[float] = []
+    exits: list[float] = []
+    event_ages: list[float] = []
+    for row in conn.execute(
+        "SELECT f.raised_at, f.first_seen_at, f.resolved_at, f.is_open,"
+        "       cf.id AS corroborated "
+        "FROM faults f LEFT JOIN closed_faults cf ON cf.id = f.id "
+        "WHERE f.raised_at IS NOT NULL"
+    ):
+        raised = dt.datetime.fromisoformat(row["raised_at"])
+        entry = max(0.0, (dt.datetime.fromisoformat(row["first_seen_at"])
+                          - raised).total_seconds() / 86400)
+        end = now if row["is_open"] else dt.datetime.fromisoformat(row["resolved_at"])
+        exit_age = (end - raised).total_seconds() / 86400
+        if exit_age < entry:
+            continue
+        entries.append(entry)
+        exits.append(exit_age)
+        # 69% of all departures are uncorroborated bulk removals. Counting
+        # those as clearances would collapse the curve on a publication event.
+        if not row["is_open"] and (
+                row["resolved_at"] not in flagged or row["corroborated"] is not None):
+            event_ages.append(exit_age)
+
+    if len(event_ages) < 200:
+        return {}
+    entries.sort()
+    exits.sort()
+    event_ages.sort()
+
+    def at_risk(age: float) -> int:
+        """Faults observable at `age`: entered before it, not yet left."""
+        return bisect.bisect_left(entries, age) - bisect.bisect_left(exits, age)
+
+    curve: list[tuple[float, float, int]] = [(0.0, 1.0, at_risk(0.0))]
+    survival_p = 1.0
+    greenwood = 0.0
+    i = 0
+    horizon = 0.0
+    while i < len(event_ages):
+        age = event_ages[i]
+        deaths = 0
+        while i < len(event_ages) and event_ages[i] == age:
+            deaths += 1
+            i += 1
+        n = at_risk(age)
+        if n < deaths or n <= 0:
+            continue
+        # Below this the estimate is a rumour: a handful of faults at an age
+        # nothing was watched through. Stop rather than draw a tail.
+        if n < MIN_AT_RISK:
+            break
+        survival_p *= 1 - deaths / n
+        if n > deaths:
+            greenwood += deaths / (n * (n - deaths))
+        horizon = age
+        curve.append((age, survival_p, n))
+
+    def at(days: float) -> dict | None:
+        if days > horizon:
+            return None
+        point = curve[0]
+        for row in curve:
+            if row[0] <= days:
+                point = row
+            else:
+                break
+        return {"days": days, "cleared_pct": round(100 * (1 - point[1]), 1),
+                "at_risk": at_risk(days),
+                "events_by": sum(1 for a in event_ages if a <= days)}
+
+    # Sampled finely where the action is and coarsely in the tail, so a curve
+    # spanning a year does not lose the first day to rounding.
+    grid: list[float] = []
+    step, edge = 0.25, 14.0
+    point = 0.0
+    while point <= horizon:
+        grid.append(round(point, 3))
+        if point >= 90:
+            step = 5.0
+        elif point >= edge:
+            step = 1.0
+        point += step
+
+    sampled: list[list[float]] = []
+    j = 0
+    for point in grid:
+        while j + 1 < len(curve) and curve[j + 1][0] <= point:
+            j += 1
+        sampled.append([point, round(curve[j][1], 5)])
+
+    median = next((row[0] for row in curve if row[1] <= 0.5), None)
+    return {
+        "faults": len(entries),
+        "events": len(event_ages),
+        "horizon_days": round(horizon, 1),
+        "curve": sampled,
+        "median_days": round(median, 2) if median is not None else None,
+        "horizons": [h for h in (at(7), at(30), at(90), at(180), at(365)) if h],
+        "min_at_risk": MIN_AT_RISK,
     }
 
 
@@ -1223,6 +1364,7 @@ def build(db_path: Path, out: Path) -> None:
     payload["closure"] = closure_outcomes(conn)
     payload["stages"] = stage_occupancy(conn)
     payload["survival"] = survival(conn)
+    payload["survival_by_age"] = survival_by_age(conn)
     by_report, by_fault = cross_links(conn)
     payload["links"] = {"reports_matched": len(by_report), "faults_matched": len(by_fault)}
     _write(out / "summary.json", payload)

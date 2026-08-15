@@ -1296,7 +1296,43 @@ function renderStages(d) {
     </table></div>
     <p class="footnote">A fault counted as "not moved" may still be being worked on — this is
       the published status changing, not the work.</p>
+    ${byAge(d.by_age)}
     ${back}`;
+}
+
+// The oldest faults are not half-repaired, they are unstarted (#4).
+//
+// Worth its place next to the stage table because the intuition runs the other
+// way: a fault open for a year sounds like a job that keeps going wrong. It is
+// mostly a job that has not begun, and nearly half of them sit at the stage
+// immediately before the road is dug up.
+function byAge(rows) {
+  if (!rows || rows.length < 2) return '';
+  const oldest = rows[rows.length - 1];
+  const top = Object.entries(oldest.stages)[0];
+  return `
+    <h3 style="font-size:13.5px;margin:24px 0 6px">Waiting to start, by age</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Open for</th><th>Faults</th><th>Not yet at a repair stage</th>
+        <th>Most common stage</th></tr></thead>
+      <tbody>${rows.map((r) => {
+        const [stage, n] = Object.entries(r.stages)[0];
+        return `
+        <tr><td>${escape(r.band)}</td>
+            <td class="num">${formatNumber(r.n)}</td>
+            <td class="num"><strong>${r.not_started_pct.toFixed(1)}%</strong></td>
+            <td>${escape(stage)} <span class="pinned">(${formatNumber(n)})</span></td></tr>`;
+      }).join('')}
+      </tbody>
+    </table></div>
+    <p class="footnote">A fault open for a long time is not usually one being worked on and
+      going wrong &mdash; it is one that has not started.
+      <strong>${oldest.not_started_pct.toFixed(1)}%</strong> of the
+      ${formatNumber(oldest.n)} faults open ${escape(oldest.band)} have not reached a repair
+      stage, and the largest group of them, ${formatNumber(top[1])}, sit at
+      <em>${escape(top[0])}</em> &mdash; the step immediately before a road is opened, and the
+      one that requires a permit from the highway authority. Thames Water's own permits show
+      the digging itself is typically finished within days of starting.</p>`;
 }
 
 // ── How long until a fault clears ───────────────────────────────

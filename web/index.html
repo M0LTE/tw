@@ -102,7 +102,8 @@
         <p>Thames Water publishes a lifecycle for each work order. This is where open faults are
            sitting now, and how long since each last moved. Times are &ldquo;at least&rdquo;: we
            cannot see behind the day collection started, so a fault may have been at its stage far
-           longer.</p>
+           longer. The second table asks the same question of the long-standing backlog, where the
+           answer is not what the phrase &ldquo;open for a year&rdquo; suggests.</p>
       </header>
       <div id="stages-body"></div>
     </section>
@@ -380,6 +381,19 @@
         <li>A minority of closed records carry a real closure date; most do not.</li>
         <li>Faults sometimes drop out and come back between collections. Those are counted once and
           flagged, not double-counted as new.</li>
+        <li><strong>Faults that have not started</strong> are counted against Thames Water's own
+          published status. A fault is treated as under way once it reaches <em>Repair Underway</em>,
+          <em>Repair Complete</em> or <em>Completed</em>; anything at <em>Reported</em>,
+          <em>Investigation</em> or <em>Repair Planning</em> has not begun. Nothing is inferred
+          &mdash; it is a count of statuses. Note this runs opposite to the obvious guess: faults
+          that <em>have</em> reached a repair stage are younger than those that have not (median 20
+          days against 44), so a long-open fault is usually one waiting to start rather than one
+          going wrong repeatedly.</li>
+        <li>Most faults never publish a repair stage at all &mdash; about 95% of those that cleared
+          went from <em>Investigation</em> straight to finished, consistently across every problem
+          type, and most carry a single line item. So &ldquo;never reached Repair Underway&rdquo; is
+          closer to the normal path than to a failure, which is why the panel reports where the
+          backlog is waiting rather than counting repairs that never happened.</li>
         <li><strong>Where the backlog is stuck</strong> counts open faults by lifecycle stage and how
           long since each last moved. It deliberately does not give an average time per stage: a stage
           visit can only be timed when both its start and end are seen, so with a short history that

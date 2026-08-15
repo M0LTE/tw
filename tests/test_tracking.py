@@ -1315,6 +1315,58 @@ class SurvivalTests(unittest.TestCase):
         self.assertAlmostEqual(groups[72]["median_days"], 3.25, places=2)
 
 
+class StalledBeforeRepairTests(unittest.TestCase):
+    """#4 — the aged backlog is unstarted work, not half-finished work."""
+
+    def _conn(self, faults):
+        tmp = TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        conn = store.rebuild(Path(tmp.name) / "s.db", Path(tmp.name) / "deltas")
+        for i, (status, raised) in enumerate(faults):
+            conn.execute(
+                "INSERT INTO faults (id, source, status, raised_at, first_seen_at,"
+                " last_changed_at, is_open, reappearances)"
+                " VALUES (?, 'clean', ?, ?, ?, ?, 1, 0)",
+                (f"s{i}", status, raised, raised, raised))
+        conn.commit()
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def test_counts_by_age_and_whether_work_has_started(self):
+        from collector import build_site
+
+        today = dt.date(2026, 8, 15)
+        faults = ([("Repair Planning", "2025-01-01")] * 5      # over a year
+                  + [("Repair Underway", "2025-01-01")] * 1
+                  + [("Investigation", "2026-08-14")] * 3)     # under a week
+        conn = self._conn(faults)
+        rows = build_site.stalled_before_repair(conn, today)
+        conn.close()
+
+        by_band = {r["band"]: r for r in rows}
+        year = by_band["over a year"]
+        self.assertEqual(year["n"], 6)
+        self.assertEqual(year["not_started"], 5, "Repair Underway counts as started")
+        self.assertAlmostEqual(year["not_started_pct"], 83.3, places=1)
+        self.assertEqual(next(iter(year["stages"])), "Repair Planning",
+                         "stages are ordered most-common first for the UI")
+        self.assertEqual(by_band["under a week"]["not_started_pct"], 100.0)
+
+    def test_completed_counts_as_started_even_though_it_is_not_a_repair_stage(self):
+        """A fault showing Completed has plainly not stalled before starting.
+
+        Counting it as "not started" would inflate the very figure the panel
+        exists to make, which is the wrong way for a mistake to point.
+        """
+        from collector import build_site
+
+        conn = self._conn([("Completed", "2025-01-01")] * 4 + [("Reported", "2025-01-01")] * 4)
+        rows = build_site.stalled_before_repair(conn, dt.date(2026, 8, 15))
+        conn.close()
+        self.assertEqual(rows[0]["not_started"], 4)
+        self.assertEqual(rows[0]["not_started_pct"], 50.0)
+
+
 class DelayedEntryTests(unittest.TestCase):
     """#36 — reaching past the observation window by letting faults enter late."""
 

@@ -609,6 +609,54 @@ def notes() -> dict:
     return {"entries": entries}
 
 
+def stalled_before_repair(conn: sqlite3.Connection, today: dt.date) -> list[dict]:
+    """Where the long-standing backlog is actually sitting, by age (#4).
+
+    #4 asked for faults that leave the map without a repair ever starting. The
+    answer for departures is 95%, which turns out to say more about how the
+    lifecycle is used than about repairs — most work orders carry a single line
+    item and go from Investigation straight to complete, across every journey
+    type, so "never reached Repair Underway" is close to the normal path.
+
+    The useful question is the same one asked of the *backlog*, and it inverts
+    the expectation. Faults that have reached a repair stage are younger, not
+    older: median 20 days against 44. The aged backlog is not work half-done,
+    it is work not started — and nearly half of the faults open more than a
+    year sit at *Repair Planning*, the stage immediately before a road is dug
+    up, which is also the stage that needs a street works permit (#6).
+
+    Reported against the published status, so every figure here is a count of
+    Thames Water's own records with nothing inferred.
+    """
+    # Statuses at or past the point where physical work has begun.
+    started = {"Repair Underway", "Repair Complete", "Completed"}
+    bands = ((7, "under a week"), (30, "1 to 4 weeks"), (90, "1 to 3 months"),
+             (365, "3 to 12 months"), (None, "over a year"))
+
+    rows = conn.execute(
+        "SELECT status, raised_at FROM faults WHERE is_open = 1 AND raised_at IS NOT NULL"
+    ).fetchall()
+    buckets: dict[str, dict] = {label: {"n": 0, "not_started": 0, "stages": collections.Counter()}
+                                for _, label in bands}
+    for row in rows:
+        age = (today - dt.date.fromisoformat(row["raised_at"][:10])).days
+        label = next(name for limit, name in bands if limit is None or age < limit)
+        bucket = buckets[label]
+        bucket["n"] += 1
+        bucket["stages"][row["status"] or "unrecorded"] += 1
+        if row["status"] not in started:
+            bucket["not_started"] += 1
+
+    return [
+        {"band": label, "n": bucket["n"],
+         "not_started": bucket["not_started"],
+         "not_started_pct": round(100 * bucket["not_started"] / bucket["n"], 1),
+         "stages": dict(bucket["stages"].most_common())}
+        for _, label in bands
+        if (bucket := buckets[label])["n"]
+    ]
+
+
 def stage_occupancy(conn: sqlite3.Connection) -> dict:
     """Where the open backlog is sitting, and how long it has sat there.
 
@@ -1363,6 +1411,7 @@ def build(db_path: Path, out: Path) -> None:
     payload["external_flooding"] = external_sewer_flooding(conn, today)
     payload["closure"] = closure_outcomes(conn)
     payload["stages"] = stage_occupancy(conn)
+    payload["stages"]["by_age"] = stalled_before_repair(conn, today)
     payload["survival"] = survival(conn)
     payload["survival_by_age"] = survival_by_age(conn)
     by_report, by_fault = cross_links(conn)

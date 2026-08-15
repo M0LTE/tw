@@ -12,7 +12,7 @@ their data protection / information rights team, not the general customer contac
 and say "Environmental Information Regulations 2004" in the subject so it is routed
 correctly.
 
-**Before sending:** items 1–4 are deliberately narrow. Do not add anything already
+**Before sending:** items 1–6 are deliberately narrow. Do not add anything already
 published — asking for material that is on their own map weakens the rest of the request.
 In particular, the Completed/Canceled split is already public in
 `CleanWaterClosedWorkOrder` and `WasteWaterClosedWorkOrder`, so item 1 asks only for what
@@ -70,6 +70,38 @@ sits behind it.
 > reaching a status of "Repair Planning" and the corresponding street works permit being
 > granted, for each of the last 24 months.
 >
+> **5. The meaning of "Repair Complete", and the line item model.**
+> Records in the work order layers carry a `WorkOrderStatus` of "Repair Complete", together
+> with `OpenWorkOrderLineItemCount` and `ClosedWorkOrderLineItemCount` fields, a
+> `WORepairCompleteDateTime`, and a `RemainOnMapInHrs` of 72. Across your published closed
+> work order layers, 79.8% of records marked "Repair Complete" carry a non-zero
+> `OpenWorkOrderLineItemCount`, against 2.8% of those marked "Completed". Please provide:
+>
+> a) the definition of a line item, and what an open line item on a work order signifies;
+>
+> b) the criteria under which a work order's status is set to "Repair Complete", and whether
+> that status is intended to indicate that the physical repair is finished; and
+>
+> c) what `WORepairCompleteDateTime` records, given that it is revised forward on the
+> majority of work orders that reach this status — of 1,093 such records we observed, 751 had
+> the date revised afterwards, across 2,001 revisions, every one of which moved the date
+> later and none of which moved it earlier; and
+>
+> d) whether `RemainOnMapInHrs` is counted from `WORepairCompleteDateTime`, and therefore
+> whether revising that date extends the period a work order remains visible on the public
+> map. We observe records displaying "Repair Complete" for up to 10.4 days against a
+> `RemainOnMapInHrs` of 72.
+>
+> **6. Interim reinstatements not yet made permanent.**
+> The Specification for the Reinstatement of Openings in Highways (Fourth Edition, May 2020)
+> provides at S1.1.4 that "an interim reinstatement must normally be made permanent within
+> six months". Street Manager records the reinstatement state of each excavation and derives
+> an interim period end date six months from the reinstatement date, but reinstatement
+> records are not included in its open data. For each month over the last 24 months, please
+> provide the number of Thames Water excavations recorded in Street Manager as being in an
+> interim reinstatement state, and of those, the number where the interim period end date
+> had passed without a permanent reinstatement being registered.
+>
 > I would prefer the response in a machine-readable format (CSV or JSON) where the
 > information is held in that form.
 >
@@ -89,6 +121,15 @@ Record the outcome on #8 either way. A refusal is publishable in itself: we can 
 what is withheld and why it matters to the published figures, which is a stronger position
 than not having asked.
 
-If items 1 or 3 are answered, they change the site directly — item 1 lets us describe
-cancellations properly, and item 3 tells us how much we permanently lose by polling twice a
-day rather than hourly, which is the open question on #16.
+Items 1, 3 and 5 change the site directly if answered. Item 1 lets us describe cancellations
+properly. Item 3 tells us how much a record can pass through the feed unseen even at hourly
+collection. Item 5 is the one to press hardest: the site currently publishes a finding about
+"Repair Complete" (#32, #33) resting on the contrast between two statuses and on the
+direction the completion date moves, and states plainly that we cannot see what a line item
+is. A definition would either confirm the reading or correct it, and we have committed in
+public to saying so either way.
+
+Item 6 is the only one whose subject is held by a third party as well — DfT hold the same
+reinstatement records in Street Manager. If Thames Water refuse it as not held or as
+environmental information held by another authority, the same request goes to DfT, who
+publish permits but not reinstatements.

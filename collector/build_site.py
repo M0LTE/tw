@@ -278,7 +278,11 @@ def survival(conn: sqlite3.Connection) -> dict:
     if not first or not latest:
         return {}
     now = dt.datetime.fromisoformat(latest)
-    quarantined = uncorroborated_bulk_departures(conn)
+    # Collection *moments* whose departures are not evidence of anything, not
+    # fault ids — the same set `summary()` uses, and it has to be applied the
+    # same way: a fault that departed in one of those collections still counts
+    # as cleared if the closed feed corroborates that particular record.
+    flagged = uncorroborated_bulk_departures(conn)
 
     # (duration in days, was it observed clearing)
     observations: list[tuple[float, bool]] = []
@@ -286,8 +290,10 @@ def survival(conn: sqlite3.Connection) -> dict:
     # the map, which is the floor under every number here.
     by_retention: dict[int, list[float]] = collections.defaultdict(list)
     for row in conn.execute(
-        "SELECT id, raised_at, resolved_at, is_open, remain_on_map_hrs FROM faults "
-        "WHERE raised_at > ? AND raised_at IS NOT NULL", (first,)
+        "SELECT f.id, f.raised_at, f.resolved_at, f.is_open, f.remain_on_map_hrs,"
+        "       cf.id AS corroborated "
+        "FROM faults f LEFT JOIN closed_faults cf ON cf.id = f.id "
+        "WHERE f.raised_at > ? AND f.raised_at IS NOT NULL", (first,)
     ):
         raised = dt.datetime.fromisoformat(row["raised_at"])
         if row["is_open"]:
@@ -300,7 +306,7 @@ def survival(conn: sqlite3.Connection) -> dict:
         # observed being repaired, so counting it as a clearance would drag the
         # curve down for a reason that has nothing to do with the work. It stops
         # being observable at that moment, which is censoring.
-        cleared = row["id"] not in quarantined
+        cleared = row["resolved_at"] not in flagged or row["corroborated"] is not None
         observations.append((days, cleared))
         if cleared and row["remain_on_map_hrs"]:
             by_retention[row["remain_on_map_hrs"]].append(days)

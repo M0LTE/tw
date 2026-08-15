@@ -1216,6 +1216,50 @@ class SurvivalTests(unittest.TestCase):
         self.assertAlmostEqual(self._at(1, result), 50.0, places=1)
         self.assertAlmostEqual(result["median_days"], 1.0, places=2)
 
+    def test_bulk_departures_censor_unless_the_closed_feed_confirms_them(self):
+        """`uncorroborated_bulk_departures` returns moments, not fault ids.
+
+        Getting that wrong is silent: testing `fault.id not in moments` never
+        matches, so every bulk departure is counted as a genuine clearance and
+        the curve is dragged down by a publication event. It shipped that way
+        briefly and changed the estimate by only three faults, because the
+        August collapses hit old records rather than the incident cohort — which
+        is exactly why it needs a test rather than a glance at the output.
+
+        The rule is `summary()`'s: a departure in a flagged collection still
+        counts if the closed feed carries that particular record.
+        """
+        from collector import build_site
+
+        # 30 ordinary collections of one departure each, so the median is 1.
+        faults = [("2026-01-02T00:00:00+00:00", f"2026-01-05T00:{i:02d}:00+00:00", False, 24)
+                  for i in range(30)]
+        # ...then one collection removing 100 at once, which clears the
+        # 20x-the-median bar and so is flagged unless corroborated.
+        bulk_at = "2026-01-06T00:00:00+00:00"
+        faults += [("2026-01-02T00:00:00+00:00", bulk_at, False, 24)] * 100
+        conn = self._db(faults)
+
+        result = build_site.survival(conn)
+        self.assertEqual(result["cohort"], 130)
+        self.assertEqual(result["cleared"], 30,
+                         "the 100 uncorroborated bulk departures must censor, not count")
+
+        # Corroborate five of them. That stays under the 10% bar, so the
+        # collection remains flagged and only those five count — corroborating
+        # enough of a collection instead clears the whole collection, which is
+        # the intended behaviour and a different case.
+        for i in range(30, 35):
+            conn.execute(
+                "INSERT INTO closed_faults (id, source, status, is_listed, reappearances,"
+                " first_seen_at, last_changed_at) VALUES (?, 'clean_closed', 'Completed', 1, 0, ?, ?)",
+                (f"f{i}", bulk_at, bulk_at))
+        conn.commit()
+        result = build_site.survival(conn)
+        conn.close()
+        self.assertEqual(result["cleared"], 35,
+                         "a corroborated record counts even in a flagged collection")
+
     def test_cohort_is_defined_on_raised_not_first_seen(self):
         """A fault raised before collection began is left-truncated and must go.
 

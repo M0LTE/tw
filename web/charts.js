@@ -234,3 +234,72 @@ export function flowChart(container, rows) {
   }
   container.replaceChildren(svg);
 }
+
+/**
+ * A survival step curve: the share of a cohort that has cleared by day N.
+ *
+ * Drawn as a step rather than a line because that is what the estimate is —
+ * it changes only when a fault actually clears, and interpolating between
+ * those moments would draw a smoothness the data does not have.
+ *
+ * `markers` are the horizons worth annotating, each with the number still at
+ * risk behind it. They are the honest part of the picture: an estimate at day
+ * 7 resting on 557 remaining faults deserves to be read differently from one
+ * at day 1 resting on 5,123, and the curve alone cannot show that.
+ */
+export function stepChart(container, points, { markers = [], yLabel = '' } = {}) {
+  if (!points || points.length < 2) {
+    emptyState(container, 'Not enough history yet — this fills in as faults are followed from the day they are raised.');
+    return;
+  }
+
+  const W = 900;
+  const H = 280;
+  const pad = { top: 14, right: 14, bottom: 34, left: 52 };
+  const xMax = points[points.length - 1][0];
+  const x = (v) => pad.left + (v / Math.max(0.001, xMax)) * (W - pad.left - pad.right);
+  const y = (v) => H - pad.bottom - (v / 100) * (H - pad.top - pad.bottom);
+
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart' });
+
+  for (const tick of [0, 25, 50, 75, 100]) {
+    svg.append(el('line', { x1: pad.left, x2: W - pad.right, y1: y(tick), y2: y(tick), class: 'grid' }));
+    svg.append(el('text', { x: pad.left - 8, y: y(tick) + 4, class: 'axis', 'text-anchor': 'end' }, `${tick}%`));
+  }
+  const dayTicks = niceTicks(0, xMax, 6);
+  dayTicks.forEach((v, i) => {
+    if (v > xMax) return;
+    svg.append(el('text', { x: x(v), y: H - 10, class: 'axis', 'text-anchor': anchorFor(i, dayTicks.length) },
+      v === 0 ? 'raised' : `${formatNumber(v)}d`));
+  });
+
+  // Step path: horizontal to the next x, then vertical to the new value.
+  let d = `M ${x(points[0][0])} ${y(points[0][1])}`;
+  for (let i = 1; i < points.length; i++) {
+    d += ` L ${x(points[i][0])} ${y(points[i - 1][1])} L ${x(points[i][0])} ${y(points[i][1])}`;
+  }
+  svg.append(el('path', { d: `${d} L ${x(xMax)} ${y(0)} L ${x(0)} ${y(0)} Z`,
+    fill: 'var(--c-resolved)', 'fill-opacity': 0.16, stroke: 'none' }));
+  svg.append(el('path', { d, fill: 'none', stroke: 'var(--c-resolved)', 'stroke-width': 2.5 }));
+
+  for (const m of markers) {
+    if (m.days > xMax) continue;
+    svg.append(el('line', { x1: x(m.days), x2: x(m.days), y1: pad.top, y2: H - pad.bottom,
+      class: 'grid', 'stroke-dasharray': '3 3' }));
+    svg.append(el('circle', { cx: x(m.days), cy: y(m.cleared_pct), r: 3.5,
+      fill: 'var(--c-resolved)' }));
+    // Near the baseline the label collides with the axis, so it goes above the
+    // marker there and beside it everywhere else.
+    const low = m.cleared_pct < 12;
+    svg.append(el('text', {
+      x: x(m.days) + (low ? 7 : 6),
+      y: y(m.cleared_pct) - (low ? 12 : 8),
+      class: 'axis',
+    }, `${m.cleared_pct.toFixed(0)}%`));
+  }
+
+  if (yLabel) {
+    svg.append(el('text', { x: pad.left, y: 10, class: 'axis', 'text-anchor': 'start' }, yLabel));
+  }
+  container.replaceChildren(svg);
+}

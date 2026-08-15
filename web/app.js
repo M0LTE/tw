@@ -4,7 +4,7 @@
 // dictionary-encoded columnar data (~20k faults), which we expand once into
 // plain objects; everything after that is ordinary array work.
 
-import { areaChart, barChart, flowChart, formatNumber } from './charts.js';
+import { areaChart, barChart, flowChart, stepChart, formatNumber } from './charts.js';
 
 const AGE_CLASSES = [7, 30, 90, 365];
 // Statuses that sound finished. Thames Water applies "Repair Complete" to
@@ -343,7 +343,12 @@ function renderKPIs() {
             : 'public reports awaiting a work order',
         }
       : null,
-    s.resolution.n
+    // Prefer the estimate over the average. A median across only the faults
+    // that cleared can contain nothing but the quick ones, and the page should
+    // not carry two different answers to the same question — so where the
+    // survival estimate exists it is the headline, and the descriptive figure
+    // stays in the card below where its population can be spelled out. #5
+    survivalKpi(s) || (s.resolution.n
       ? {
           label: 'Typical time to clear',
           value: `${formatNumber(s.resolution.since_raised.p50)}d`,
@@ -356,7 +361,7 @@ function renderKPIs() {
           label: 'Typical time to clear',
           value: '–',
           note: 'No faults have cleared since tracking began',
-        },
+        }),
   ];
 
   $('#kpis').replaceChildren(
@@ -1294,6 +1299,92 @@ function renderStages(d) {
     ${back}`;
 }
 
+// ── How long until a fault clears ───────────────────────────────
+//
+// The site's older "time to clear" figure averaged the faults that cleared
+// inside the observation window, which are by construction the quick ones. This
+// is the Kaplan-Meier estimate over faults watched from the day they were
+// raised, so the ones still open count as unfinished rather than as absent.
+//
+// Two things this must not overstate, both surfaced next to the number rather
+// than in a footnote nobody reads: the curve stops at the age of the oldest
+// fault in the cohort, and it measures time until the pin leaves the map, which
+// includes the day or three Thames Water keeps a finished record published.
+// The KPI form of the survival estimate, or null when there is not enough
+// history to have one — in which case the caller falls back to the descriptive
+// median rather than showing a blank.
+function survivalKpi(s) {
+  const d = s.survival;
+  if (!d || !d.cohort) return null;
+  if (d.median_days === null) {
+    return {
+      label: 'Typical time to clear',
+      value: `>${formatNumber(d.horizon_days)}d`,
+      note: `more than half of ${formatNumber(d.cohort)} faults followed from the day they were `
+        + 'raised are still open',
+    };
+  }
+  return {
+    label: 'Typical time to clear',
+    value: `${formatNumber(d.median_days)}d`,
+    note: `${formatNumber(d.cohort)} faults followed from the day they were raised, `
+      + `counting the ${formatNumber(d.censored)} still open`,
+  };
+}
+
+function renderSurvival(d) {
+  const host = $('#survival-body');
+  if (!host) return;
+  if (!d || !d.curve || !d.cohort) return;
+  $('#card-survival').hidden = false;
+
+  const began = new Date(d.tracking_began).toLocaleDateString('en-GB',
+    { day: 'numeric', month: 'long', year: 'numeric' });
+  const median = d.median_days === null
+    ? `More than half of them are still open, so a median cannot be stated yet without
+       inventing the part of the curve we have not seen.`
+    : `Half had gone within <strong>${d.median_days} days</strong>. The figure this replaces &mdash;
+       the median across only those faults that cleared &mdash; reads
+       ${d.naive_median_days} days, because it can only ever contain the quick ones.`;
+
+  const rows = d.horizons.map((h) => `
+    <tr><td>Within ${h.days} day${h.days === 1 ? '' : 's'}</td>
+        <td class="num">${h.cleared_pct.toFixed(1)}%</td>
+        <td class="num pinned">±${h.se_pct.toFixed(1)}</td>
+        <td class="num pinned">${formatNumber(h.at_risk)}</td></tr>`).join('');
+
+  const ret = d.retention.length > 1 ? `
+    <p class="footnote"><strong>This is time until the fault leaves the map, not time to
+      repair.</strong> Thames Water keeps a record published for a set period after finishing
+      with it, and that period is the floor under every number above:
+      ${d.retention.map((r) => `${formatNumber(r.n)} faults held for ${r.hours} hours cleared in a
+        median of ${r.median_days} days, with a tenth of them inside ${r.p10_days}`).join('; ')}.
+      The repair itself finished earlier than these figures show, by up to that retention period.
+      It is not subtracted here: the retention clock runs from a completion timestamp that
+      <a href="#notes">moves</a>, so subtracting a fixed offset would be arithmetic on a shifting
+      quantity.</p>` : '';
+
+  host.innerHTML = `
+    <div class="chart-host" id="chart-survival"></div>
+    <p class="footnote" style="margin-top:0">${formatNumber(d.cohort)} faults raised since
+      ${escape(began)} and followed from that day. ${formatNumber(d.cleared)} have left the map;
+      <strong>${formatNumber(d.censored)} are still open</strong> and are counted as unfinished
+      rather than dropped, which is the whole point of estimating it this way. ${median}</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Share cleared</th><th>Estimate</th><th>Margin</th><th>Still at risk</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <p class="footnote">The curve stops at ${d.horizon_days} days because that is the age of the
+      oldest fault in the cohort &mdash; nothing here can say what happens after that, and it
+      extends by a day for every day collection runs. The right-hand column is how many faults
+      remain under observation at each point: the estimate thins as it goes, and the margin widens
+      with it.</p>
+    ${ret}`;
+
+  stepChart($('#chart-survival'), d.curve.map(([t, s]) => [t, 100 * (1 - s)]),
+    { markers: d.horizons, yLabel: 'Share of faults cleared' });
+}
+
 // ── Permits ─────────────────────────────────────────────────────
 //
 // A second source on a different clock — DfT's Street Manager archive, monthly
@@ -1515,6 +1606,7 @@ async function main() {
     renderClosure();
     renderStages(state.summary.stages);
     renderPermits(permitData);
+    renderSurvival(state.summary.survival);
     renderPlaces();
     renderReportsBlurb();
     applyFilters();

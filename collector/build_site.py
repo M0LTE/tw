@@ -15,6 +15,7 @@ import datetime as dt
 import gzip
 import json
 import logging
+import math
 import re
 import sqlite3
 import statistics
@@ -241,6 +242,162 @@ def cleared_faults(conn: sqlite3.Connection, today: dt.date) -> dict:
             "verdict": verdict.values,
         },
         "cols": cols,
+    }
+
+
+def survival(conn: sqlite3.Connection) -> dict:
+    """How long a fault takes to clear, estimated properly (#5).
+
+    The site's descriptive "time to clear" is length-biased: it averages the
+    faults that cleared inside the observation window, which are by definition
+    the quick ones. #5 set out the fix and correctly rejected plain Kaplan-Meier
+    at the time, because 99.8% of faults were already open at the first snapshot
+    — a *prevalent* cohort, with entry ages up to 1,069 days, and KM assumes
+    observation from time zero.
+
+    That objection is now avoidable rather than needing to be worked around.
+    There is a genuine *incident* cohort: faults whose ``raised_at`` falls after
+    collection began, every one of them watched from the moment Thames Water
+    raised it. For those, plain KM is not a compromise, it is the right
+    estimator, and the 38% still open are handled as what they are — censored,
+    not resolved.
+
+    Note the cohort is defined on ``raised_at``, not ``first_seen_at``. A fault
+    can appear in the feed long after it was raised; one such record cleared
+    966 days after its raised date. Those are still left-truncated and must stay
+    out, or the bias this function exists to remove comes straight back in.
+
+    The curve stops at the window. Nothing here can estimate beyond the age of
+    the oldest fault in the cohort, so it is reported to that point and no
+    further, with the number still at risk alongside so a reader can see the
+    estimate thinning rather than trusting a tail drawn from a handful of
+    records.
+    """
+    first, latest = conn.execute(
+        "SELECT min(observed_at), max(observed_at) FROM snapshots").fetchone()
+    if not first or not latest:
+        return {}
+    now = dt.datetime.fromisoformat(latest)
+    quarantined = uncorroborated_bulk_departures(conn)
+
+    # (duration in days, was it observed clearing)
+    observations: list[tuple[float, bool]] = []
+    # Clearance times split by how long Thames Water holds a finished record on
+    # the map, which is the floor under every number here.
+    by_retention: dict[int, list[float]] = collections.defaultdict(list)
+    for row in conn.execute(
+        "SELECT id, raised_at, resolved_at, is_open, remain_on_map_hrs FROM faults "
+        "WHERE raised_at > ? AND raised_at IS NOT NULL", (first,)
+    ):
+        raised = dt.datetime.fromisoformat(row["raised_at"])
+        if row["is_open"]:
+            observations.append(((now - raised).total_seconds() / 86400, False))
+            continue
+        if not row["resolved_at"]:
+            continue
+        days = (dt.datetime.fromisoformat(row["resolved_at"]) - raised).total_seconds() / 86400
+        # A record that vanished in an uncorroborated bulk departure was not
+        # observed being repaired, so counting it as a clearance would drag the
+        # curve down for a reason that has nothing to do with the work. It stops
+        # being observable at that moment, which is censoring.
+        cleared = row["id"] not in quarantined
+        observations.append((days, cleared))
+        if cleared and row["remain_on_map_hrs"]:
+            by_retention[row["remain_on_map_hrs"]].append(days)
+    if len(observations) < 100:
+        return {}
+
+    observations.sort()
+    total = len(observations)
+    events = sum(1 for _, cleared in observations if cleared)
+
+    # Kaplan-Meier, with Greenwood's variance for the interval.
+    curve: list[list[float]] = [[0.0, 1.0, float(total), 0.0]]
+    at_risk = total
+    survival_p = 1.0
+    greenwood = 0.0
+    i = 0
+    while i < len(observations):
+        t = observations[i][0]
+        tied = [o for o in observations[i:] if o[0] == t]
+        i += len(tied)
+        cleared_here = sum(1 for _, c in tied if c)
+        if cleared_here and at_risk > cleared_here:
+            survival_p *= 1 - cleared_here / at_risk
+            greenwood += cleared_here / (at_risk * (at_risk - cleared_here))
+            curve.append([round(t, 4), round(survival_p, 6), float(at_risk),
+                          round(survival_p * math.sqrt(greenwood), 6)])
+        at_risk -= len(tied)
+
+    horizon = observations[-1][0]
+
+    # What the curve is actually measuring, which is not repair time.
+    #
+    # Thames Water keeps a record on the public map for a further
+    # `remain_on_map_hrs` after finishing with it, and that shows up as a hard
+    # floor: with a 24-hour retention the tenth percentile of clearances is 1.09
+    # days, with 72 hours it is 3.10. So this estimates time until the pin
+    # disappears, and it exceeds the time to repair by the retention period.
+    #
+    # Not subtracting it. The retention clock runs from the completion
+    # timestamp, and #33 established that timestamp is revised forward on 69% of
+    # records — every one of 2,001 revisions moved it later — so subtracting a
+    # fixed offset would be arithmetic on a moving quantity. Reported instead.
+    retention = [
+        {"hours": hours, "n": len(days_list),
+         "median_days": round(statistics.median(days_list), 2),
+         "p10_days": round(sorted(days_list)[len(days_list) // 10], 2)}
+        for hours, days_list in sorted(by_retention.items())
+        if len(days_list) >= 50
+    ]
+
+    def at(days: float) -> dict | None:
+        """The estimate at a horizon, with the risk set that supports it."""
+        if days > horizon:
+            return None
+        point = curve[0]
+        for row in curve:
+            if row[0] <= days:
+                point = row
+            else:
+                break
+        remaining = sum(1 for d, _ in observations if d >= days)
+        return {"days": days, "cleared_pct": round(100 * (1 - point[1]), 1),
+                "at_risk": remaining, "se_pct": round(100 * point[3], 1)}
+
+    # Downsampled for transport. The estimator runs on every distinct event
+    # time; the browser draws a step function, so sampling it on a fixed grid
+    # is visually identical and an order of magnitude smaller.
+    step = max(horizon / 240, 1 / 96)
+    sampled: list[list[float]] = []
+    j = 0
+    t = 0.0
+    while t <= horizon + 1e-9:
+        while j + 1 < len(curve) and curve[j + 1][0] <= t:
+            j += 1
+        sampled.append([round(t, 3), round(curve[j][1], 5)])
+        t += step
+
+    # The median from the estimator: the first time survival drops to or below
+    # a half. None when it never does inside the window, which is the honest
+    # answer rather than extrapolating one.
+    km_median = next((row[0] for row in curve if row[1] <= 0.5), None)
+
+    return {
+        "cohort": total,
+        "cleared": events,
+        "censored": total - events,
+        "horizon_days": round(horizon, 2),
+        "tracking_began": first,
+        "curve": sampled,
+        "horizons": [h for h in (at(1), at(3), at(7), at(14), at(30)) if h],
+        "median_days": round(km_median, 2) if km_median is not None else None,
+        # The length-biased figure this replaces: the median over only those
+        # faults that cleared, which can only contain the quick ones.
+        "naive_median_days": round(
+            statistics.median([d for d, c in observations if c]), 2) if events else None,
+        # Not repair time — see the comment above. The floor under all of it.
+        "retention": retention,
     }
 
 
@@ -1059,6 +1216,7 @@ def build(db_path: Path, out: Path) -> None:
     payload["external_flooding"] = external_sewer_flooding(conn, today)
     payload["closure"] = closure_outcomes(conn)
     payload["stages"] = stage_occupancy(conn)
+    payload["survival"] = survival(conn)
     by_report, by_fault = cross_links(conn)
     payload["links"] = {"reports_matched": len(by_report), "faults_matched": len(by_fault)}
     _write(out / "summary.json", payload)

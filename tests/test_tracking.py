@@ -1148,6 +1148,129 @@ if __name__ == "__main__":
     unittest.main(verbosity=2)
 
 
+class SurvivalTests(unittest.TestCase):
+    """#5 — time to clear, estimated over an incident cohort with censoring."""
+
+    START = "2026-01-01T00:00:00+00:00"
+    NOW = "2026-01-20T00:00:00+00:00"
+
+    def _db(self, faults):
+        """A database with just enough in it for survival() to run.
+
+        Built directly rather than through the delta replay: this function reads
+        only `faults` and `snapshots`, and driving 100+ records through the
+        collector would test the collector, not the estimator.
+        """
+        tmp = TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "s.db"
+        conn = store.rebuild(path, Path(tmp.name) / "deltas")
+        for moment in (self.START, self.NOW):
+            conn.execute(
+                "INSERT INTO snapshots (observed_at, total, appeared, changed, resolved,"
+                " reappeared, source_counts) VALUES (?, 0, 0, 0, 0, 0, '{}')", (moment,))
+        for i, (raised, resolved, is_open, remain) in enumerate(faults):
+            conn.execute(
+                "INSERT INTO faults (id, source, raised_at, resolved_at, is_open,"
+                " remain_on_map_hrs, reappearances, first_seen_at, last_changed_at)"
+                " VALUES (?, 'clean', ?, ?, ?, ?, 0, ?, ?)",
+                (f"f{i}", raised, resolved, 1 if is_open else 0, remain,
+                 raised, resolved or self.NOW))
+        conn.commit()
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    @staticmethod
+    def _at(days: float, result: dict) -> float:
+        return next(h["cleared_pct"] for h in result["horizons"] if h["days"] == days)
+
+    def test_censored_faults_lift_the_estimate_above_the_raw_share(self):
+        """The whole reason for estimating rather than counting.
+
+        Twenty faults are raised half a day before the last collection and are
+        still open, so they stop being observable at 0.5 days. Forty clear at
+        exactly one day. Forty more are open at two days.
+
+        Counting gives 40 cleared out of 100 = 40% by day one. That treats the
+        twenty as "not cleared within a day" when they were never watched for a
+        day. The risk set at day one is 80, so the estimate is 40/80 = 50%.
+        That difference is the length bias #5 exists to remove.
+        """
+        from collector import build_site
+
+        faults = (
+            # censored at 0.5 days — raised shortly before the last collection
+            [("2026-01-19T12:00:00+00:00", None, True, 24)] * 20
+            # cleared at exactly 1.0 days
+            + [("2026-01-10T00:00:00+00:00", "2026-01-11T00:00:00+00:00", False, 24)] * 40
+            # censored at 2.0 days
+            + [("2026-01-18T00:00:00+00:00", None, True, 24)] * 40
+        )
+        conn = self._db(faults)
+        result = build_site.survival(conn)
+        conn.close()
+
+        self.assertEqual(result["cohort"], 100)
+        self.assertEqual(result["cleared"], 40)
+        self.assertEqual(result["censored"], 60)
+        self.assertAlmostEqual(self._at(1, result), 50.0, places=1)
+        self.assertAlmostEqual(result["median_days"], 1.0, places=2)
+
+    def test_cohort_is_defined_on_raised_not_first_seen(self):
+        """A fault raised before collection began is left-truncated and must go.
+
+        The trap that makes this whole approach valid: a fault can appear in the
+        feed long after it was raised — one real record cleared 966 days after
+        its raised date. Including those reintroduces the prevalent-cohort
+        problem that made plain Kaplan-Meier wrong in the first place.
+        """
+        from collector import build_site
+
+        old = "2023-05-01T00:00:00+00:00"
+        faults = ([(old, "2026-01-10T00:00:00+00:00", False, 24)] * 60
+                  + [("2026-01-02T00:00:00+00:00", "2026-01-03T00:00:00+00:00", False, 24)] * 100)
+        conn = self._db(faults)
+        result = build_site.survival(conn)
+        conn.close()
+        self.assertEqual(result["cohort"], 100, "the 60 raised before tracking must be excluded")
+        self.assertEqual(result["cleared"], 100)
+
+    def test_curve_stops_at_the_oldest_fault_and_states_no_median_when_it_has_none(self):
+        """No extrapolating past the window, and no median it cannot support."""
+        from collector import build_site
+
+        # Everything still open at 5 days: nothing has cleared, so there is no
+        # median and the curve cannot reach beyond 5 days.
+        faults = [("2026-01-15T00:00:00+00:00", None, True, 24)] * 120
+        conn = self._db(faults)
+        result = build_site.survival(conn)
+        conn.close()
+        self.assertEqual(result["cleared"], 0)
+        self.assertIsNone(result["median_days"], "a median must not be invented")
+        self.assertAlmostEqual(result["horizon_days"], 5.0, places=1)
+        self.assertEqual([h["days"] for h in result["horizons"]], [1, 3],
+                         "horizons beyond the observation window are omitted")
+
+    def test_retention_periods_are_reported_because_they_floor_everything(self):
+        """The curve measures time to leave the map, not time to repair.
+
+        Thames Water holds a finished record for 24 or 72 hours, and that shows
+        as a hard floor under the clearance times. Publishing this as "time to
+        fix" without it would overstate the repair by up to three days.
+        """
+        from collector import build_site
+
+        faults = ([("2026-01-02T00:00:00+00:00", "2026-01-03T06:00:00+00:00", False, 24)] * 60
+                  + [("2026-01-02T00:00:00+00:00", "2026-01-05T06:00:00+00:00", False, 72)] * 60)
+        conn = self._db(faults)
+        result = build_site.survival(conn)
+        conn.close()
+        groups = {r["hours"]: r for r in result["retention"]}
+        self.assertEqual(sorted(groups), [24, 72])
+        self.assertAlmostEqual(groups[24]["median_days"], 1.25, places=2)
+        self.assertAlmostEqual(groups[72]["median_days"], 3.25, places=2)
+
+
 class PermitTests(unittest.TestCase):
     """Street Manager permit extraction (#6)."""
 

@@ -15,6 +15,143 @@
   ],
   "entries": [
     {
+      "date": "2026-08-19",
+      "title": "Most faults clear in two days. The ones that don't have never started.",
+      "summary": "The typical fault goes within about two days, and 882 have been open more than a year. Both are true, and the second group turns out not to be work going wrong — it is work that has not begun.",
+      "body": [
+        {
+          "p": "Two figures on this site look like they contradict each other. The typical fault clears in **about two days**. There are also **884 faults that have been open for more than a year**, the oldest raised 1,085 days ago. Both are correct, and the gap between them is the most useful thing here."
+        },
+        {
+          "p": "Almost everything clears quickly. Following every fault from the day Thames Water raised it, and counting the ones still open rather than quietly dropping them:"
+        },
+        {
+          "table": {
+            "head": [
+              "Cleared within",
+              "Share of faults"
+            ],
+            "rows": [
+              [
+                "7 days",
+                "75.2%"
+              ],
+              [
+                "30 days",
+                "91.8%"
+              ],
+              [
+                "90 days",
+                "97.1%"
+              ],
+              [
+                "180 days",
+                "98.7%"
+              ]
+            ]
+          }
+        },
+        {
+          "p": "So the backlog is not a slow-moving queue that everyone waits in. It is a fast queue with a small number of faults that fall out of it and stay out. The question worth asking is what those have in common."
+        },
+        {
+          "p": "**It is not that they are being worked on and going wrong.** Thames Water publishes a five-stage lifecycle for each work order, ending in the repair itself. Comparing open faults by whether they have ever reached a repair stage gives the opposite of the obvious answer:"
+        },
+        {
+          "table": {
+            "head": [
+              "Open faults",
+              "Number",
+              "Median age"
+            ],
+            "rows": [
+              [
+                "Have reached a repair stage",
+                "1,287",
+                "22 days"
+              ],
+              [
+                "Have not",
+                "6,498",
+                "42 days"
+              ]
+            ]
+          }
+        },
+        {
+          "p": "The faults being repaired are the *younger* ones. And among the 884 open more than a year, **87.1% have never reached a repair stage at all**:"
+        },
+        {
+          "table": {
+            "head": [
+              "Stage",
+              "Faults open over a year",
+              "Share"
+            ],
+            "rows": [
+              [
+                "Repair Planning",
+                "425",
+                "48.1%"
+              ],
+              [
+                "Investigation",
+                "223",
+                "25.2%"
+              ],
+              [
+                "Reported",
+                "122",
+                "13.8%"
+              ],
+              [
+                "Repair Underway",
+                "107",
+                "12.1%"
+              ],
+              [
+                "Completed or Repair Complete",
+                "7",
+                "0.8%"
+              ]
+            ]
+          }
+        },
+        {
+          "p": "**Nearly half of them sit at Repair Planning** — the stage immediately before a road is opened. Not being dug up. Waiting to be."
+        },
+        {
+          "p": "That stage is also the one that needs a permit from the highway authority to dig up the road, which is where a second, entirely separate source becomes useful. The Department for Transport publishes every such permit application, and this site now holds six months of Thames Water's."
+        },
+        {
+          "p": "On those, Thames Water look **fine**. Of 43,373 works they completed, 76.5% finished by the date they had applied to finish by, and the typical job takes about two days. Even their major schemes, the worst category, come in at 41.6% late."
+        },
+        {
+          "p": "**So the delay is not in the digging.** When Thames Water opens a road they close it again roughly when they said they would. Hundreds of faults are meanwhile sitting for over a year at the step just before that happens. Whatever is taking the time, the evidence from their own permits says it is not the roadworks."
+        },
+        {
+          "p": "**What this does not show.** Everything above is counted from the status Thames Water publishes, which is a claim about their record-keeping and not a report from the street. A fault marked *Repair Planning* for a year might be genuinely queued, or might be finished work whose status was never updated — and this site has already found one status that does not mean what it says. We also cannot link an individual fault to an individual permit: that join was built and tested against chance, and it was not good enough to publish, so the two sources here are being compared in aggregate rather than case by case."
+        },
+        {
+          "p": "**And it does not prove nothing is happening.** *Investigation* and *Repair Planning* cover real work — surveys, traffic management, coordinating with councils. What can be said is narrower and still worth saying: for hundreds of faults, that work has been going on for more than a year, and the part Thames Water controls most directly and measures itself on is the part that finishes on time."
+        }
+      ],
+      "refs": [
+        {
+          "label": "Issue #4 — where the long-standing backlog actually sits",
+          "url": "https://github.com/M0LTE/tw/issues/4"
+        },
+        {
+          "label": "Issue #36 — how the estimate reaches past the collection window",
+          "url": "https://github.com/M0LTE/tw/issues/36"
+        },
+        {
+          "label": "Issue #6 — the permit data, and the join that was not published",
+          "url": "https://github.com/M0LTE/tw/issues/6"
+        }
+      ]
+    },
+    {
       "date": "2026-08-14",
       "title": "“Repair Complete” does not mean the repair is complete",
       "summary": "A third closed-feed status that reads like an outcome and is not one. Four in five records carrying it still show outstanding work on Thames Water's own count — and that count usually goes up, not down, at the moment it is applied.",

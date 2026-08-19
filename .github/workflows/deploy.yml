@@ -11,7 +11,12 @@ on:
     paths:
       - 'web/**'
       - 'collector/**'
-      - 'data/deltas/**'
+      # Everything under data/ is an input to the build — the delta log, the
+      # narrative notes, the permit extracts and the reference tables — so it
+      # is matched wholesale rather than enumerated. Listing them individually
+      # meant a commit touching only data/notes.json passed its tests, merged,
+      # and never published: the site build was simply never asked to run. #37
+      - 'data/**'
       - '.github/workflows/deploy.yml'
   # Called by collect.yml after it commits a snapshot. A push made with the
   # default GITHUB_TOKEN deliberately does not trigger other workflows, so the

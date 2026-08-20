@@ -324,6 +324,14 @@ td.rate { position: relative; min-width: 130px; }
   background: rgba(217, 143, 6, 0.12); border: 1px solid rgba(217, 143, 6, 0.45);
 }
 .banner strong { font-weight: 650; }
+#staleness { margin-bottom: 20px; }
+/* Past a day the figures are not "slightly behind", they describe a specific
+   past moment. Red, because at that point the page's own headline claim to be
+   counting hourly has stopped being true. */
+.banner.stale-loud {
+  background: rgba(192, 57, 43, 0.10); border-color: rgba(192, 57, 43, 0.45);
+}
+.freshness.is-stale #freshness-value { color: #c0392b; font-weight: 650; }
 
 /* ── Notes ─────────────────────────────────────────────────────
    Dated narrative entries. Deliberately reads as prose rather than as a

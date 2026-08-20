@@ -1335,6 +1335,68 @@ function byAge(rows) {
       the digging itself is typically finished within days of starting.</p>`;
 }
 
+// ── Freshness ───────────────────────────────────────────────────
+//
+// If collection stops, every figure on this page keeps rendering and quietly
+// describes whenever the last successful poll happened. The masthead goes on
+// claiming the map is counted every hour in the present tense. Nothing else on
+// the page would tell you (#38).
+//
+// Two deliberate choices:
+//
+// This measures against the *reader's* clock, unlike the cleared-fault filter,
+// which counts back from the last collection on purpose so newly departed
+// faults are not dropped for someone loading between runs. There the question
+// is "what happened in the data"; here it is "how old is what you are looking
+// at", and only the reader's now answers that.
+//
+// And it is state, not narrative — it appears while collection is behind and
+// disappears when it catches up. That is the distinction that matters after a
+// banner outlived its event three times and had to be replaced by dated notes:
+// this one cannot go stale, because being stale is the only thing it says.
+const STALE_AFTER_HOURS = 3;   // three missed hourly polls — beyond ordinary lateness
+const STALE_LOUD_HOURS = 24;   // past this the page is describing a past moment
+
+function renderFreshness(collected) {
+  const value = $('#freshness-value');
+  const banner = $('#staleness');
+  if (!collected) {
+    value.textContent = 'never';
+    return;
+  }
+  const when = new Date(collected);
+  value.textContent = when.toLocaleString('en-GB',
+    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+  // A reader whose clock is behind ours would otherwise see a negative age; a
+  // wrong clock is not a reason to accuse the collector of being down.
+  const hours = Math.max(0, (Date.now() - when.getTime()) / 3600000);
+  if (hours < STALE_AFTER_HOURS) return;
+
+  const loud = hours >= STALE_LOUD_HOURS;
+  const ago = hours < 48
+    ? `${Math.floor(hours)} hours`
+    : `${Math.floor(hours / 24)} days`;
+
+  $('.freshness').classList.add('is-stale');
+  banner.classList.toggle('stale-loud', loud);
+  banner.hidden = false;
+  banner.innerHTML = loud
+    ? `<strong>These figures are ${escape(ago)} old.</strong> Collection runs hourly and has not
+       succeeded since ${escape(when.toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short' }))}.
+       Everything below describes the map as it stood then, not as it stands now &mdash; the backlog,
+       the ages and the &ldquo;recently cleared&rdquo; lists included. Faults may have been raised or
+       fixed since with no trace here.`
+    : `<strong>Collection is behind.</strong> The last successful poll was ${escape(ago)} ago, and
+       these figures describe the map as it stood then. Hourly collection occasionally slips; if this
+       persists it means the collector has stopped rather than that nothing is happening.`;
+
+  if (loud) {
+    const tagline = $('.tagline');
+    if (tagline) tagline.textContent = 'Every fault on their public map — collection has stalled, see above.';
+  }
+}
+
 // ── How long until a fault clears ───────────────────────────────
 //
 // The site's older "time to clear" figure averaged the faults that cleared
@@ -1687,10 +1749,7 @@ async function main() {
     if (!state.cleared.length) $('#f-mode').hidden = true;
     syncModeUI();
 
-    const collected = summary.totals.latest_snapshot;
-    $('#freshness-value').textContent = collected
-      ? new Date(collected).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-      : 'never';
+    renderFreshness(summary.totals.latest_snapshot);
 
     fillSelect('#f-source', summary.sources.map((s) => s.key), 'Both networks');
     for (const option of $('#f-source').options) {

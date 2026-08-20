@@ -17,6 +17,7 @@ import gzip
 import json
 import logging
 import math
+import random
 import re
 import sqlite3
 import statistics
@@ -1215,6 +1216,111 @@ def _match_key(street: str | None, postcode: str | None) -> tuple[str, str] | No
     return (name, re.sub(r"\s+", " ", postcode.strip().upper()))
 
 
+def report_conversion(conn: sqlite3.Connection) -> dict:
+    """What share of public reports are followed by work (#1).
+
+    The figure this project was opened to produce, and the one it has been
+    unable to state because the denominator was wrong rather than because the
+    matching was. Three things stopped a percentage meaning anything: reports
+    with no usable address, reports whose work is recorded at a differently
+    formatted address, and reports about a problem Thames Water already had on
+    its books, where no new work order should be expected at all.
+
+    The third is measurable, and it is a fifth of all reports. Asking whether a
+    fault was *already open at that address when the report was made* separates
+    "nobody acted" from "they were already on it", and that distinction is the
+    whole difficulty. What remains is a population of reports about apparently
+    new problems, where a work order genuinely ought to follow.
+
+    ## This is a floor, and the inverse is not a fact
+
+    The other two causes both point the same way: a conversion recorded at a
+    neighbouring address, at a differently punctuated one, or outside the window
+    is missed and counted as a failure. So the conversion rate here is a lower
+    bound, which makes "the rest were ignored" an upper bound stated as a
+    certainty. The payload carries `chance` alongside so the page can show what
+    the report itself is worth rather than what coincidence supplies.
+    """
+    parsed = lambda value: dt.datetime.fromisoformat(value) if value else None
+
+    open_at: dict[tuple, list] = collections.defaultdict(list)
+    for row in conn.execute(
+        "SELECT street, postcode, raised_at, resolved_at, is_open FROM faults "
+        "WHERE raised_at IS NOT NULL"
+    ):
+        key = _match_key(row["street"], row["postcode"])
+        if key:
+            open_at[key].append(
+                (parsed(row["raised_at"]), parsed(row["resolved_at"]), row["is_open"]))
+
+    no_address = already_open = 0
+    fresh: list[tuple[tuple, dt.datetime]] = []
+    for row in conn.execute(
+        "SELECT street, postcode, reported_at, first_seen_at FROM reports"
+    ):
+        key = _match_key(row["street"], row["postcode"])
+        when = parsed(row["reported_at"]) or parsed(row["first_seen_at"])
+        if not key or not when:
+            no_address += 1
+            continue
+        # Already on their books: the report is a duplicate of work in progress,
+        # and expecting a *new* work order from it would count being already
+        # dealt with as a failure to act.
+        if any(raised <= when and (is_open or (resolved and resolved > when))
+               for raised, resolved, is_open in open_at.get(key, ())):
+            already_open += 1
+            continue
+        fresh.append((key, when))
+
+    total = no_address + already_open + len(fresh)
+    if len(fresh) < 500:
+        return {}
+
+    def measure(before: int, after: int) -> tuple[int, float]:
+        """Matches, and matches expected if the reports happened elsewhere."""
+        lo, hi = dt.timedelta(days=before), dt.timedelta(days=after)
+        hit = lambda key, when: any(
+            when - lo <= raised <= when + hi for raised, _, _ in open_at.get(key, ()))
+        matched = sum(1 for key, when in fresh if hit(key, when))
+        # Permutation rather than date shifting, for the reason #1 settled: the
+        # volume of work varies enough over time that shifting dates changes the
+        # opportunity pool and flatters the matcher.
+        keys = [key for key, _ in fresh]
+        counts = []
+        for seed in (1, 2, 3):
+            shuffled = keys[:]
+            random.Random(seed).shuffle(shuffled)
+            counts.append(sum(1 for key, (_, when) in zip(shuffled, fresh) if hit(key, when)))
+        return matched, sum(counts) / len(counts)
+
+    matched, chance = measure(MATCH_BEFORE_DAYS, MATCH_AFTER_DAYS)
+    pct = lambda n: round(100 * n / len(fresh), 1)
+
+    # The window is a choice, so it is published with the evidence for it: it
+    # maximises the share attributable to the report, not the share matched.
+    sensitivity = []
+    for before, after in ((0, 1), (1, 3), (1, 7), (1, 14)):
+        m, c = measure(before, after)
+        sensitivity.append({
+            "before_days": before, "after_days": after,
+            "matched_pct": pct(m), "chance_pct": pct(c), "excess_pct": pct(m - c),
+        })
+
+    return {
+        "reports": total,
+        "no_address": no_address,
+        "already_open": already_open,
+        "eligible": len(fresh),
+        "matched": matched,
+        "matched_pct": pct(matched),
+        "chance_pct": pct(chance),
+        "excess_pct": pct(matched - chance),
+        "signal": round(matched / chance, 1) if chance else None,
+        "window": {"before_days": MATCH_BEFORE_DAYS, "after_days": MATCH_AFTER_DAYS},
+        "sensitivity": sensitivity,
+    }
+
+
 def cross_links(conn: sqlite3.Connection) -> tuple[dict, dict]:
     """Associate public reports with work orders raised at the same address.
 
@@ -1407,6 +1513,7 @@ def build(db_path: Path, out: Path) -> None:
 
     payload = summary(conn, today)
     payload["reports"] = report_summary(conn, today)
+    payload["reports"]["conversion"] = report_conversion(conn)
     payload["areas"] = areas(conn, today)
     payload["external_flooding"] = external_sewer_flooding(conn, today)
     payload["closure"] = closure_outcomes(conn)

@@ -1335,6 +1335,94 @@ function byAge(rows) {
       the digging itself is typically finished within days of starting.</p>`;
 }
 
+// ── Report conversion (#1) ──────────────────────────────────────
+//
+// The figure this project exists to produce, and the one most likely to be
+// quoted without its qualifications. Two rules govern how it is written here.
+//
+// The denominator is stated before the percentage, because the percentage is
+// meaningless without it: a fifth of reports concern a problem Thames Water
+// already had open, where no new work order should be expected, and counting
+// those as failures would manufacture the accusation.
+//
+// And the measured rate is a floor, so its inverse is a ceiling. Conversions
+// recorded at a neighbouring address or outside the window are missed and count
+// as failures. "Three quarters were ignored" is what a reader will reach for,
+// it is not what the data supports, and the page says so in those words rather
+// than leaving it to a footnote.
+function renderConversion(d) {
+  const host = $('#conversion-body');
+  if (!host) return;
+  if (!d || !d.eligible) return;
+  $('#card-conversion').hidden = false;
+
+  const pct = (n) => `${(100 * n / d.reports).toFixed(1)}%`;
+  const rows = d.sensitivity.map((s) => {
+    const current = s.after_days === d.window.after_days && s.before_days === d.window.before_days;
+    const label = s.before_days === 0
+      ? `Same day, or the next`
+      : `Within ${s.after_days} days`;
+    return `
+      <tr>
+        <td>${escape(label)}${current ? ' <span class="pinned">(used here)</span>' : ''}</td>
+        <td class="num">${s.matched_pct.toFixed(1)}%</td>
+        <td class="num pinned">${s.chance_pct.toFixed(1)}%</td>
+        <td class="num"><strong>${s.excess_pct.toFixed(1)}%</strong></td>
+      </tr>`;
+  }).join('');
+
+  host.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Of ${formatNumber(d.reports)} reports we have kept</th><th>Reports</th><th>Share</th></tr></thead>
+      <tbody>
+        <tr><td>Published with no usable address, so nothing can be matched</td>
+            <td class="num pinned">${formatNumber(d.no_address)}</td>
+            <td class="num pinned">${pct(d.no_address)}</td></tr>
+        <tr><td>Made about a street where Thames Water <strong>already had a fault open</strong></td>
+            <td class="num pinned">${formatNumber(d.already_open)}</td>
+            <td class="num pinned">${pct(d.already_open)}</td></tr>
+        <tr><td><strong>Made about an apparently new problem</strong></td>
+            <td class="num">${formatNumber(d.eligible)}</td>
+            <td class="num">${pct(d.eligible)}</td></tr>
+      </tbody>
+    </table></div>
+    <p class="footnote" style="margin-top:0">Only the last group can answer the question. A report
+      about a problem already being worked on should not produce a second work order, and counting
+      those as failures would invent a complaint the data does not support.</p>
+
+    <div class="stat-row">
+      <div><span class="stat-value">${formatNumber(d.matched)}</span>
+           <span class="stat-label">of those ${formatNumber(d.eligible)} were followed by a new work order</span></div>
+      <div><span class="stat-value">${d.matched_pct.toFixed(1)}%</span>
+           <span class="stat-label">within ${d.window.after_days} days</span></div>
+      <div><span class="stat-value">${d.excess_pct.toFixed(1)}%</span>
+           <span class="stat-label">after subtracting coincidence</span></div>
+    </div>
+    <p class="footnote" style="margin-top:0">Some of those work orders would have appeared anyway:
+      a busy street gets dug up whether or not anybody reported it. Shuffling which report was made
+      where still produces ${d.sensitivity.find((s) => s.after_days === d.window.after_days).chance_pct.toFixed(1)}%
+      matches by chance, so the honest figure is the
+      <strong>${d.excess_pct.toFixed(1)}%</strong> that shuffling destroys &mdash;
+      ${d.signal} times what coincidence supplies.</p>
+
+    <h3 style="font-size:13.5px;margin:22px 0 6px">How long to allow</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Work order raised</th><th>Reports matched</th><th>By chance</th><th>Attributable</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <p class="footnote">Allowing longer finds more work orders and more coincidences, and past a
+      few days the coincidences win. The window used here is the one that maximises what is
+      actually attributable to the report, rather than the one that produces the largest number.</p>
+
+    <p class="footnote"><strong>What this does not show.</strong> That
+      ${(100 - d.matched_pct).toFixed(0)}% of reports were ignored. A work order recorded at the
+      house next door, at the same address punctuated differently, or raised a fortnight later is
+      missed by this and counted as nothing happening. Every one of those makes the true figure
+      higher than ${d.matched_pct.toFixed(1)}%, so treat it as a floor: <strong>at least this many
+      reports lead to work</strong>. What happened to the rest is genuinely unknown, and unknown is
+      not the same as ignored.</p>`;
+}
+
 // ── Freshness ───────────────────────────────────────────────────
 //
 // If collection stops, every figure on this page keeps rendering and quietly
@@ -1787,6 +1875,7 @@ async function main() {
     renderSurvival(state.summary.survival);
     renderPlaces();
     renderReportsBlurb();
+    renderConversion(summary.reports.conversion);
     applyFilters();
     applyReportFilters();
 

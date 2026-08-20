@@ -174,8 +174,15 @@ python -m collector.collect --force          # apply changes even if a layer cou
 Run the tests with:
 
 ```bash
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -v   # the collector
+node --test 'tests/*.test.mjs'            # the browser's share of the logic
 ```
+
+Both run in CI. The second is there because the page takes decisions of its own once the
+JSON crosses to the browser — whether a status contradicts its own line-item count, whether
+to admit that collection has stopped — and several of those encode findings this site argues
+in public. It needs no dependencies: `node --test` is in the standard library, and the tests
+import the pure helpers out of `web/app.js` directly.
 
 Most figures on the site are counts `build_site` produces anyway. A few are one-off
 measurements quoted as prose in the caveats below, and those are the ones that quietly go

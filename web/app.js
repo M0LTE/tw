@@ -52,7 +52,7 @@ const rowsForMode = () => (state.mode === 'cleared' ? state.cleared : state.faul
 // over seven days" beneath "mostly the 9,620 work orders that stopped being
 // published". Each time the caveat outlived the thing it described and said
 // something false. One helper, used everywhere, so there is no fourth.
-function eventVisible(info, newestSeconds, windowDays) {
+export function eventVisible(info, newestSeconds, windowDays) {
   if (!info || !info.observed_at) return false;
   if (!windowDays) return true;   // no window means everything is in view
   return Date.parse(info.observed_at) / 1000 > newestSeconds - windowDays * 86400;
@@ -69,13 +69,13 @@ function formatDate(day) {
   return dayToDate(day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function ageClass(days) {
+export function ageClass(days) {
   if (days === null || days === undefined) return 4;
   for (let i = 0; i < AGE_CLASSES.length; i++) if (days < AGE_CLASSES[i]) return i;
   return 4;
 }
 
-function formatAge(days) {
+export function formatAge(days) {
   if (days === null || days === undefined) return '—';
   if (days < 1) return 'today';
   if (days < 21) return `${days}d`;
@@ -84,7 +84,7 @@ function formatAge(days) {
   return `${years.toFixed(years < 10 ? 1 : 0)}y`;
 }
 
-function titleCase(text) {
+export function titleCase(text) {
   if (!text) return '';
   // Thames Water's address lines are inconsistently punctuated — "5,MANDEVILLE
   // CLOSE" is theirs verbatim — so give a comma its space back before casing.
@@ -181,7 +181,7 @@ async function loadJSON(path) {
   return res.json();
 }
 
-function expand(open) {
+export function expand(open) {
   const { dict, cols } = open;
   const out = new Array(cols.id.length);
   for (let i = 0; i < cols.id.length; i++) {
@@ -232,7 +232,7 @@ function dayOf(epochSeconds) {
   return Math.floor(epochSeconds / 86400) - epochDay;
 }
 
-function expandCleared(data) {
+export function expandCleared(data) {
   const { dict, cols } = data;
   return cols.id.map((id, i) => {
     const raised = cols.r[i];
@@ -464,7 +464,7 @@ function renderOldest(limit = 25) {
   table.append(body);
 }
 
-function escape(text) {
+export function escape(text) {
   return String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
@@ -546,7 +546,7 @@ function clearedCell(x) {
 // Thames Water's own verdict, or the honest absence of one. A cleared fault
 // with no closed-feed record has not been confirmed as anything — saying so is
 // the point of the column.
-function verdictCell(x) {
+export function verdictCell(x) {
   if (x.verdict === 'Completed') return '<span class="verdict done">Completed</span>';
   if (x.verdict === 'Canceled') return '<span class="verdict cancelled">Cancelled</span>';
   // "Repair Complete" reads like an outcome and is not one — four in five
@@ -565,7 +565,7 @@ function verdictCell(x) {
 // marker is deliberately not styled as an error: outstanding line items are
 // Thames Water's own count, and what they mean is undocumented. It is shown so
 // a reader can see the contradiction, not told what to conclude from it.
-function statusCell(x) {
+export function statusCell(x) {
   const label = escape(x.status || '');
   if (!FINISHED_SOUNDING.has(x.status) || !x.openItems) return label;
   const n = x.openItems;
@@ -1357,26 +1357,43 @@ function byAge(rows) {
 const STALE_AFTER_HOURS = 3;   // three missed hourly polls — beyond ordinary lateness
 const STALE_LOUD_HOURS = 24;   // past this the page is describing a past moment
 
+// The decision, separated from the rendering so it can be tested without a
+// browser: given when we last collected and what time it is for the reader,
+// how should the page describe itself? Returns null when there is nothing to
+// say, which is the normal case.
+export function freshnessState(collected, nowMs) {
+  if (!collected) return { level: 'never' };
+  const when = new Date(collected);
+  if (Number.isNaN(when.getTime())) return { level: 'never' };
+  // A reader whose clock is behind ours would otherwise see a negative age; a
+  // wrong clock is not a reason to accuse the collector of being down.
+  const hours = Math.max(0, (nowMs - when.getTime()) / 3600000);
+  if (hours < STALE_AFTER_HOURS) return { level: 'fresh', when, hours };
+  return {
+    level: hours >= STALE_LOUD_HOURS ? 'loud' : 'behind',
+    when,
+    hours,
+    // Hours stay readable up to two days; past that days are what a reader
+    // actually needs, and "51 hours" invites arithmetic nobody should do.
+    ago: hours < 48 ? `${Math.floor(hours)} hours` : `${Math.floor(hours / 24)} days`,
+  };
+}
+
 function renderFreshness(collected) {
   const value = $('#freshness-value');
   const banner = $('#staleness');
-  if (!collected) {
+  const state = freshnessState(collected, Date.now());
+  if (state.level === 'never') {
     value.textContent = 'never';
     return;
   }
-  const when = new Date(collected);
+  const when = state.when;
   value.textContent = when.toLocaleString('en-GB',
     { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  if (state.level === 'fresh') return;
 
-  // A reader whose clock is behind ours would otherwise see a negative age; a
-  // wrong clock is not a reason to accuse the collector of being down.
-  const hours = Math.max(0, (Date.now() - when.getTime()) / 3600000);
-  if (hours < STALE_AFTER_HOURS) return;
-
-  const loud = hours >= STALE_LOUD_HOURS;
-  const ago = hours < 48
-    ? `${Math.floor(hours)} hours`
-    : `${Math.floor(hours / 24)} days`;
+  const loud = state.level === 'loud';
+  const ago = state.ago;
 
   $('.freshness').classList.add('is-stale');
   banner.classList.toggle('stale-loud', loud);
@@ -1567,7 +1584,7 @@ function renderLongRange(d, incident) {
 // inside two days are fully observed in every month, so their rate holds steady
 // while the all-works rate climbs with the observation window. The gap between
 // them is the censoring, in percentage points.
-function cohorts(rows) {
+export function cohorts(rows) {
   if (!rows || rows.length < 2) return '';
   const month = (m) => new Date(`${m}-01T00:00:00Z`)
     .toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -1663,7 +1680,7 @@ function renderPermits(d) {
 // A deliberately tiny inline vocabulary — bold, italic, code, links — rather than raw
 // HTML. Entries are trusted repo content, so this is not about safety; it is so
 // the JSON stays legible as prose to whoever writes the next one.
-function inlineMarkup(text) {
+export function inlineMarkup(text) {
   return escape(text)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
@@ -1784,4 +1801,6 @@ async function main() {
   }
 }
 
-main();
+// Only bootstrap in a browser. Under `node --test` this module is imported for
+// its pure helpers, and running main() would immediately reach for the DOM.
+if (typeof document !== 'undefined') main();

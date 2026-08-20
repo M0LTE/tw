@@ -15,8 +15,19 @@ jobs:
         with:
           python-version: '3.12'
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
       - name: Unit tests
         run: python -m unittest discover -s tests -v
+
+      # The browser half of the site takes decisions of its own — whether a
+      # status contradicts its own line-item count, whether the page admits it
+      # has stopped collecting — and those went untested until #39. No
+      # dependencies: node --test is in the standard library.
+      - name: Web unit tests
+        run: node --test 'tests/*.test.mjs'
 
       - name: Rebuild the database from the change log
         run: python -m collector.collect --rebuild-only
